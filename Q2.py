@@ -1,133 +1,378 @@
-# pip install plotly dash
+# pip install plotly dash pandas
 
 import dash
-from dash import dcc
-from dash import html
-from dash.dependencies import Input, Output
+from dash import dcc, html, Input, Output, callback
 import plotly.graph_objects as go
-import math
+import plotly.express as px
+from plotly.subplots import make_subplots
 import pandas as pd
+import numpy as np
+import json
+import re
 
 ###############################################################
-# BEGIN OF CODE TO MAKE IT WORK, NOT THE INTEGRATION ZONE YET #
+# 1. LOAD AND PROCESS DATA
 ###############################################################
 
-# Begin of static mock movie loader
+def loadMoviesFromCSV(file_path='movies_all_countries.csv'):
+    df = pd.read_csv(file_path)
+    return df
 
-def loadMoviesFromCSV():
-    return [
-        {"title": "Movie01", "director": "Director01", "actors": ["Actor01", "Actor02", "Actor03", "Actor04", "Actor05"], "awards": [], "grossing": 25.5, "budget": 10.8},
-        {"title": "Movie02", "director": "Director02", "actors": ["Actor06", "Actor07", "Actor08", "Actor09", "Actor10"], "awards": [], "grossing": 6.0, "budget": 1.0},
-        {"title": "Movie03", "director": "Director03", "actors": ["Actor11", "Actor12", "Actor13", "Actor14", "Actor15"], "awards": [{"country": "UK", "category": "Best Soundtrack"}, {"country": "USA", "category": "Best Soundtrack"}, {"country": "UK", "category": "Best Sound"}, {"country": "USA", "category": "Best Special Effects"}, {"country": "USA", "category": "Best Sound"}, {"country": "USA", "category": "Best Song"}], "grossing": 60.2, "budget": 40.9},
-        {"title": "Movie04", "director": "Director04", "actors": ["Actor16", "Actor17", "Actor18", "Actor19", "Actor20"], "awards": [], "grossing": 1.7, "budget": 1.2},
-        {"title": "Movie05", "director": "Director05", "actors": ["Actor21", "Actor22", "Actor23", "Actor24", "Actor25"], "awards": [], "grossing": 1.5, "budget": 0.8},
-        {"title": "Movie06", "director": "Director06", "actors": ["Actor26", "Actor27", "Actor28", "Actor29", "Actor30"], "awards": [{"country": "Spain", "category": "Best Actor"}, {"country": "Spain", "category": "Best Actress"}, {"country": "Spain", "category": "Best Original Screenplay"}, {"country": "Spain", "category": "Best Film"}, {"country": "Spain", "category": "Best Song"}, {"country": "Spain", "category": "Best Soundtrack"}, {"country": "USA", "category": "Best Foreign Film"}], "grossing": 0.6, "budget": 1.0},
-        {"title": "Movie07", "director": "Director07", "actors": ["Actor31", "Actor32", "Actor33", "Actor34", "Actor35"], "awards": [], "grossing": 3.2, "budget": 2.9},
-        {"title": "Movie08", "director": "Director08", "actors": ["Actor36", "Actor37", "Actor38", "Actor39", "Actor40"], "awards": [{"country": "UK", "category": "Best Actress"}], "grossing": 51.7, "budget": 41.2},
-        {"title": "Movie09", "director": "Director09", "actors": ["Actor41", "Actor42", "Actor43", "Actor44", "Actor45"], "awards": [], "grossing": 2.5, "budget": 1.8},
-        {"title": "Movie10", "director": "Director01", "actors": ["Actor46", "Actor02", "Actor47", "Actor48", "Actor05"], "awards": [], "grossing": 2.0, "budget": 1.0},
-        {"title": "Movie11", "director": "Director10", "actors": ["Actor49", "Actor50", "Actor51", "Actor52", "Actor53"], "awards": [], "grossing": 1.2, "budget": 6.9},
-        {"title": "Movie12", "director": "Director11", "actors": ["Actor54", "Actor55", "Actor56", "Actor57", "Actor58"], "awards": [], "grossing": 11.7, "budget": 9.2},
-        {"title": "Movie13", "director": "Director12", "actors": ["Actor59", "Actor60", "Actor61", "Actor62", "Actor63"], "awards": [], "grossing": 6.5, "budget": 7.8},
-        {"title": "Movie14", "director": "Director13", "actors": ["Actor64", "Actor65", "Actor66", "Actor67", "Actor68"], "awards": [], "grossing": 9.0, "budget": 11.0},
-        {"title": "Movie15", "director": "Director02", "actors": ["Actor69", "Actor06", "Actor70", "Actor71", "Actor01"], "awards": [{"country": "USA", "category": "Best Actress"}, {"country": "USA", "category": "Best Soundtrack"}], "grossing": 21.2, "budget": 20.9},
-        {"title": "Movie16", "director": "Director14", "actors": ["Actor72", "Actor73", "Actor74", "Actor75", "Actor76"], "awards": [], "grossing": 17.7, "budget": 11.2},
-        {"title": "Movie17", "director": "Director15", "actors": ["Actor77", "Actor78", "Actor79", "Actor80", "Actor81"], "awards": [], "grossing": 2.5, "budget": 3.8},
-        {"title": "Movie18", "director": "Director16", "actors": ["Actor82", "Actor83", "Actor84", "Actor85", "Actor86"], "awards": [], "grossing": 2.0, "budget": 1.0},
-        {"title": "Movie19", "director": "Director02", "actors": ["Actor01", "Actor05", "Actor03", "Actor87", "Actor04"], "awards": [], "grossing": 1.2, "budget": 0.9},
-        {"title": "Movie20", "director": "Director04", "actors": ["Actor88", "Actor16", "Actor89", "Actor90", "Actor20"], "awards": [{"country": "UK", "category": "Best Film"}, {"country": "UK", "category": "Best Director"}, {"country": "Spain", "category": "Best European Film"}, {"country": "UK", "category": "Best Actor"}, {"country": "UK", "category": "Best Adapted Screenplay"}, {"country": "UK", "category": "Best Supporting Actress"}], "grossing": 51.7, "budget": 31.2},
-    ]
+def process_movie_data(df):
+    # Clean monetary values
+    for col in ['budget', 'domesticGross', 'worldwideGross']:
+        df[col] = df[col].str.replace('$', '').str.replace(',', '', regex=False)
+        df[col] = pd.to_numeric(df[col], errors='coerce')
 
-moviesData = loadMoviesFromCSV()
+    # Convert to millions
+    df['worldwideGross_M'] = df['worldwideGross'] / 1000000
 
-# End of static mock movie loader
+    # Convert imdbRating to numeric
+    df['imdbRating'] = pd.to_numeric(df['imdbRating'], errors='coerce')
 
-# Begin of layout settings
+    # Count awards
+    def count_awards(awards_str):
+        try:
+            awards_str = awards_str.replace("'", '"')
+            if awards_str == "[]":
+                return 0
+            awards_list = json.loads(awards_str)
+            return len(awards_list)
+        except:
+            if awards_str == "[]":
+                return 0
+            matches = re.findall(r"'[^']*'", awards_str)
+            return len(matches)
 
-# End of layout settings
+    df['award_count'] = df['awards'].apply(count_awards)
 
-# Standalone app initialiser
+    # Map countries to regions
+    country_mapping = {
+        'US': 'USA',
+        'GB': 'UK',
+        'ES': 'Spain'
+    }
+    df['region'] = df['country'].map(lambda x: country_mapping.get(x, 'Other'))
 
-app = dash.Dash(__name__)
+    return df
+
+
+# Load and process
+raw_movies_df = loadMoviesFromCSV()
+movies_df = process_movie_data(raw_movies_df)
 
 ###############################################################
-#  END OF CODE TO MAKE IT WORK, NOT THE INTEGRATION ZONE YET  #
+# 2. PREPARE DATA FOR ANALYSIS
 ###############################################################
 
-#################################
-# BEGIN OF THE INTEGRATION ZONE #
-#################################
+# Prepare data for interactive chart
+analysis_df = movies_df.copy()
+analysis_df = analysis_df.dropna(subset=['award_count', 'worldwideGross_M', 'imdbRating'])
 
-# Begin of the AUXILIARY FUNCTIONS section
+# Group by number of awards
+awards_grouped = analysis_df.groupby('award_count').agg({
+    'worldwideGross_M': ['mean', 'median', 'count'],
+    'imdbRating': ['mean', 'count']
+}).reset_index()
 
-def createQ2Content() -> go.Figure:
-    data = []
-    for movie in moviesData:
-        data.append({
-            "Title": movie["title"],
-            "AwardCount": len(movie["awards"]),  # Count awards
-            "Grossing": movie["grossing"]
-        })
-    df = pd.DataFrame(data)
+# Flatten column structure
+awards_grouped.columns = ['_'.join(col).strip('_') for col in awards_grouped.columns.values]
 
-    # Plotly scatter plot for Awards vs Grossing
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=df["AwardCount"], 
-        y=df["Grossing"], 
-        mode="markers", 
-        marker=dict(color=df["AwardCount"], colorscale='Viridis', size=12)
-    ))
+# Rename columns for clarity
+awards_grouped = awards_grouped.rename(columns={
+    'award_count': 'num_awards',
+    'worldwideGross_M_mean': 'mean_box_office',
+    'worldwideGross_M_median': 'median_box_office',
+    'worldwideGross_M_count': 'movie_count',
+    'imdbRating_mean': 'average_rating'
+})
 
-    fig.update_layout(
-        title='Awards vs Grossing for Movies',
-        xaxis_title='Number of Awards',
-        yaxis_title='Worldwide Grossing ($)',
-        template='plotly_dark',
-        showlegend=False,
-        xaxis=dict(range=[0, df["AwardCount"].max() + 1]),  # Ensure awards axis starts at 0
-        yaxis=dict(range=[df["Grossing"].min() - 1, df["Grossing"].max() + 1])  # Adjust range for better viewing
-    )
+###############################################################
+# 3. DASH APP SETUP
+###############################################################
 
-    return fig
-    
-# End of the AUXILIARY FUNCTIONS section
+app = dash.Dash(__name__, suppress_callback_exceptions=True)
 
-# Begin of the LAYOUT section
+###############################################################
+# 4. DASH LAYOUT
+###############################################################
+
 app.layout = html.Div([
-    html.H3("Q2: Awards vs Grossing"),
-    dcc.Graph(figure=createQ2Content(),
-        id='awards-vs-grossing-scatterplot')  # Display the Plotly graph here
-])
+    html.H1("Awards vs Box Office Analysis", style={'textAlign': 'center', 'color': 'white', 'marginBottom': '20px'}),
+    
+    # Control panel
+    html.Div([
+        html.Div([
+            html.Label("Filter by Number of Awards:", style={'color': 'white', 'marginRight': '10px'}),
+            dcc.RangeSlider(
+                id='awards-slider',
+                min=0,
+                max=int(awards_grouped['num_awards'].max()),
+                step=1,
+                marks={i: str(i) for i in range(0, int(awards_grouped['num_awards'].max()) + 1, 1)},
+                value=[0, min(5, int(awards_grouped['num_awards'].max()))],  # Default to 0-5 awards or max if less
+                tooltip={"placement": "bottom", "always_visible": True}
+            ),
+        ], style={'width': '70%', 'display': 'inline-block', 'padding': '20px'}),
+        
+        html.Div([
+            html.Label("Box Office Metric:", style={'color': 'white', 'marginRight': '10px'}),
+            dcc.RadioItems(
+                id='metric-selector',
+                options=[
+                    {'label': ' Mean', 'value': 'mean_box_office'},
+                    {'label': ' Median', 'value': 'median_box_office'}
+                ],
+                value='mean_box_office',
+                labelStyle={'display': 'block', 'color': 'white'}
+            )
+        ], style={'width': '20%', 'display': 'inline-block', 'padding': '20px', 'verticalAlign': 'top'})
+    ], style={'backgroundColor': '#1E1E1E', 'borderRadius': '10px', 'padding': '10px', 'margin': '10px 0'}),
+    
+    # Charts
+    html.Div([
+        dcc.Loading(
+            id="loading-graphs",
+            children=[
+                dcc.Graph(id='award-boxoffice-graph', style={'height': '400px'}),
+                html.Div([
+                    dcc.Graph(id='filtered-movies-graph', style={'height': '500px'})
+                ], style={'marginTop': '20px'})
+            ],
+            type="circle",
+            color="#00ff00"
+        )
+    ])
+], style={'backgroundColor': 'black', 'padding': '20px', 'fontFamily': 'Arial'})
 
-# End of the LAYOUT section
+###############################################################
+# 5. CALLBACKS
+###############################################################
 
-# Begin of the CALLBACK section
-
-# WATCH OUT! Without inputs there is no callback, so you can either comment this out or add 1 or more inputs if you want
-# the user to filter the visualised information
-# inputs can be sliders, buttons, radio buttons, dropdowns, etc
 @app.callback(
-    Output('awards-vs-grossing-scatterplot', 'figure'),
-#    [Input('q3-top-n-slider', 'value')]
+    [Output('award-boxoffice-graph', 'figure'),
+     Output('filtered-movies-graph', 'figure')],
+    [Input('awards-slider', 'value'),
+     Input('metric-selector', 'value')]
 )
-def updateQ2Graph() -> go.Figure:
-    fig = createQ2Content()
-    return fig
+def update_graphs(awards_range, metric):
+    # Filter data by selected range
+    filtered_data = awards_grouped[
+        (awards_grouped['num_awards'] >= awards_range[0]) & 
+        (awards_grouped['num_awards'] <= awards_range[1])
+    ]
+    
+    # Filter individual movies for the second chart
+    filtered_movies = analysis_df[
+        (analysis_df['award_count'] >= awards_range[0]) & 
+        (analysis_df['award_count'] <= awards_range[1])
+    ]
+    
+    # Create hover labels
+    hover_text = [
+        f"Awards: {row['num_awards']}<br>" +
+        f"Mean Box Office: ${row['mean_box_office']:.1f}M<br>" +
+        f"Median Box Office: ${row['median_box_office']:.1f}M<br>" + 
+        f"IMDb Rating: {row['average_rating']:.1f}<br>" + 
+        f"Number of Movies: {row['movie_count']}"
+        for _, row in filtered_data.iterrows()
+    ]
+    
+    # 1. Bar chart with trend line
+    bar_fig = make_subplots(specs=[[{"secondary_y": True}]])
+    
+    # Bars for box office
+    bar_fig.add_trace(
+        go.Bar(
+            x=filtered_data['num_awards'],
+            y=filtered_data[metric],
+            text=filtered_data['movie_count'],
+            textposition='auto',
+            hovertext=hover_text,
+            hoverinfo='text',
+            marker=dict(
+                color='rgba(50, 171, 96, 0.7)',
+                line=dict(
+                    color='rgba(50, 171, 96, 1.0)',
+                    width=2
+                )
+            ),
+            name='Box Office'
+        )
+    )
+    
+    # Line for rating
+    bar_fig.add_trace(
+        go.Scatter(
+            x=filtered_data['num_awards'],
+            y=filtered_data['average_rating'],
+            mode='lines+markers',
+            marker=dict(
+                size=8,
+                color='rgba(220, 57, 18, 0.8)',
+                line=dict(
+                    color='rgba(220, 57, 18, 1.0)',
+                    width=1
+                )
+            ),
+            line=dict(
+                color='rgba(220, 57, 18, 0.8)',
+                width=3
+            ),
+            name='IMDb Rating',
+        ),
+        secondary_y=True
+    )
+    
+    # Update layout of first chart
+    metric_title = "Mean" if metric == 'mean_box_office' else "Median"
+    
+    bar_fig.update_layout(
+        title=f'{metric_title} Box Office and Rating by Number of Awards',
+        template='plotly_dark',
+        plot_bgcolor='rgba(30, 30, 30, 1)',
+        paper_bgcolor='rgba(30, 30, 30, 1)',
+        barmode='group',
+        bargap=0.2,
+        bargroupgap=0.1,
+        legend=dict(
+            x=0.01,
+            y=0.99,
+            bgcolor='rgba(0, 0, 0, 0.5)',
+            bordercolor='rgba(255, 255, 255, 0.2)',
+            borderwidth=1
+        ),
+        hovermode='closest'
+    )
+    
+    # Update axes
+    bar_fig.update_xaxes(
+        title='Number of Awards',
+        tickvals=filtered_data['num_awards'],
+        gridcolor='rgba(255, 255, 255, 0.1)'
+    )
+    
+    bar_fig.update_yaxes(
+        title='Box Office (Millions $)',
+        tickformat='$,.0f',
+        gridcolor='rgba(255, 255, 255, 0.1)',
+        secondary_y=False
+    )
+    
+    bar_fig.update_yaxes(
+        title='IMDb Rating',
+        range=[min(filtered_data['average_rating']) - 0.5, max(filtered_data['average_rating']) + 0.5],
+        tickformat='.1f',
+        gridcolor='rgba(255, 255, 255, 0.1)',
+        secondary_y=True
+    )
+    
+    # 2. Filtered movies chart
+    # Sort to highlight the most relevant
+    if metric == 'mean_box_office':
+        filtered_movies = filtered_movies.sort_values(by=['worldwideGross_M'], ascending=False)
+    else:
+        # For median, show those with a balance of rating and box office
+        filtered_movies['combined_score'] = filtered_movies['worldwideGross_M'] * filtered_movies['imdbRating'] / 10
+        filtered_movies = filtered_movies.sort_values(by=['combined_score'], ascending=False)
+    
+    # Limit to a manageable number of movies
+    top_movies = filtered_movies.head(100)
+    
+    # FIX: Create scatter plot of movies with explicit hover template for each point
+    movie_fig = go.Figure()
+    
+    # Group by region for color consistency
+    for region in top_movies['region'].unique():
+        region_movies = top_movies[top_movies['region'] == region]
+        
+        movie_fig.add_trace(go.Scatter(
+            x=region_movies['imdbRating'],
+            y=region_movies['worldwideGross_M'],
+            mode='markers',
+            marker=dict(
+                size=region_movies['award_count'].apply(lambda x: min(30, max(10, x * 5))),  # Scale size better
+                color={
+                    'USA': 'rgb(65, 105, 225)',
+                    'UK': 'rgb(147, 112, 219)',
+                    'Spain': 'rgb(218, 165, 32)',
+                    'Other': 'rgb(100, 100, 100)'
+                }.get(region, 'rgb(100, 100, 100)'),
+                opacity=0.8,
+                line=dict(width=1, color='white')
+            ),
+            name=region,
+            text=[
+                f"<b>{row['title']}</b><br>" +
+                f"Awards: {int(row['award_count'])}<br>" +
+                f"Rating: {row['imdbRating']}/10<br>" +
+                f"Box Office: ${row['worldwideGross_M']:.1f}M<br>" +
+                f"Country: {row['region']}"
+                for _, row in region_movies.iterrows()
+            ],
+            hoverinfo='text',
+            hoverlabel=dict(bgcolor='rgba(0,0,0,0.8)', font=dict(color='white')),
+        ))
+    
+    # Add labels for featured movies
+    # Identify movies to label (top performers in both box office and awards)
+    highlight_movies = pd.concat([
+        top_movies.nlargest(5, 'worldwideGross_M'),
+        top_movies.nlargest(5, 'award_count')
+    ]).drop_duplicates()
+    
+    for i, row in highlight_movies.iterrows():
+        movie_fig.add_annotation(
+            x=row['imdbRating'],
+            y=row['worldwideGross_M'],
+            text=row['title'],
+            showarrow=True,
+            arrowhead=1,
+            arrowsize=1,
+            arrowwidth=1,
+            arrowcolor="white",
+            font=dict(size=9, color="white"),
+            bgcolor="rgba(0,0,0,0.7)",
+            bordercolor="white",
+            borderwidth=1,
+            borderpad=4,
+            ax=20,
+            ay=-30
+        )
+    
+    # Update layout of second chart
+    movie_fig.update_layout(
+        title=f'Movies with {awards_range[0]} to {awards_range[1]} Awards (Showing top {len(top_movies)} of {len(filtered_movies)} movies)',
+        xaxis_title='IMDb Rating',
+        yaxis_title='Box Office (Millions $)',
+        template='plotly_dark',
+        plot_bgcolor='rgba(30, 30, 30, 1)',
+        paper_bgcolor='rgba(30, 30, 30, 1)',
+        legend=dict(
+            title='Region',
+            x=0.01,
+            y=0.99,
+            bgcolor='rgba(0, 0, 0, 0.5)',
+            bordercolor='rgba(255, 255, 255, 0.2)',
+            borderwidth=1
+        ),
+        margin=dict(l=40, r=40, t=50, b=40),
+        hovermode='closest'
+    )
+    
+    # Handle log scale for y-axis if the range is large
+    if top_movies['worldwideGross_M'].max() / (top_movies['worldwideGross_M'].min() + 0.1) > 100:
+        movie_fig.update_yaxes(type='log', tickformat='$,.0f')
+    else:
+        movie_fig.update_yaxes(tickformat='$,.0f')
+    
+    movie_fig.update_xaxes(range=[min(top_movies['imdbRating']) - 0.5, 10])
+    
+    return bar_fig, movie_fig
 
-# End of the CALLBACK section
-
-#################################
-#  END OF THE INTEGRATION ZONE  #
-#################################
-
-##########################################
-# BEGIN OF THE STANDALONE EXECUTION ZONE #
-##########################################
+###############################################################
+# 6. RUN APP
+###############################################################
 
 if __name__ == "__main__":
     app.run(debug=True)
-
-##########################################
-#  END OF THE STANDALONE EXECUTION ZONE  #
-##########################################
