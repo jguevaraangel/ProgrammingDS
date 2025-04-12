@@ -1,3 +1,4 @@
+import ast
 import math
 
 import dash
@@ -8,8 +9,11 @@ import plotly.graph_objects as go
 from dash import Dash, dcc, html
 from dash.dependencies import Input, Output
 
+from Q3 import get_q3_layout, register_q3_callbacks
+
 # Initialize the Dash app
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], suppress_callback_exceptions=True)
+register_q3_callbacks(app)
 
 # Static movie data for placeholders
 movies_data = [
@@ -34,6 +38,13 @@ movies_data = [
     {"title": "Movie19", "director": "Director02", "actors": ["Actor01", "Actor05", "Actor03", "Actor87", "Actor04"], "awards": [], "grossing": 1.2, "budget": 0.9},
     {"title": "Movie20", "director": "Director04", "actors": ["Actor88", "Actor16", "Actor89", "Actor90", "Actor20"], "awards": [{"country": "UK", "category": "Best Film"}, {"country": "UK", "category": "Best Director"}, {"country": "Spain", "category": "Best European Film"}, {"country": "UK", "category": "Best Actor"}, {"country": "UK", "category": "Best Adapted Screenplay"}, {"country": "UK", "category": "Best Supporting Actress"}], "grossing": 51.7, "budget": 31.2},
 ]
+
+def loadMoviesFromCSVDirectors():
+    directorsInfo = pd.read_csv("./outputs/Q3/directors_info.csv")
+    return directorsInfo.to_dict("records")
+
+
+moviesDataDirectors = loadMoviesFromCSVDirectors()
 
 # Define the app layout
 app.layout = html.Div(
@@ -105,26 +116,8 @@ def createQ2Content():
     ])
 
 def createQ3Content():
-    dirSliderMin = 1
-    dirSliderMax = len(set([movie["director"] for movie in movies_data]))
+    return get_q3_layout()
 
-    return html.Div([
-    html.H1("Directors' Profitability"),
-    
-    # Slider to select number of top directors
-    dcc.Slider(
-        id='q3-top-n-slider',
-        min=dirSliderMin,
-        max=dirSliderMax,  # Dynamically set the maximum value based on number of unique actors
-        step=1,
-        value=5,
-        marks={i: str(i) for i in range(dirSliderMin, dirSliderMax, math.floor((dirSliderMax-dirSliderMin)/10))},  # Adjust marks for more flexibility
-        tooltip={"placement": "bottom", "always_visible": True}
-    ),
-    
-    # Plotly graph
-    dcc.Graph(id='directors-profitability-graph')
-])
 
 def createQ4Content():
     theSliderMin = 1
@@ -156,7 +149,10 @@ def createOverview():
             dbc.Col(createQ2Content(), width=6),
         ]),
         dbc.Row([
-            dbc.Col(createQ3Content(), width=6),
+            dbc.Col(html.Div([
+                html.H3("Top Directors by Profitability (Bubble Chart)"),
+                dcc.Graph(figure=createDirectorsProfitabilityBubble(topN=5))
+            ]), width=6),
             dbc.Col(createQ4Content(), width=6),
         ]),
     ])
@@ -256,6 +252,89 @@ def createDirectorsProfitability(top_n=5):
 
     return fig
 
+def clean_money_column(series):
+    return series.replace("[\$,]", "", regex=True)
+
+def createDirectorsProfitabilityBubble(topN: int = 5) -> go.Figure:
+    df = pd.DataFrame(moviesDataDirectors)
+
+    df["budget"] = clean_money_column(df["budget"])
+    df["worldwideGross"] = clean_money_column(df["worldwideGross"])
+
+    df["budget"] = pd.to_numeric(df["budget"], errors="coerce")
+    df["worldwideGross"] = pd.to_numeric(df["worldwideGross"], errors="coerce")
+
+    df = df.dropna(subset=["budget", "worldwideGross"])
+
+    # Initialize tracking
+    directors = {}
+
+    for _, row in df.iterrows():
+        director = row["director_name"]
+        profit = 100 * (row["worldwideGross"] / row["budget"] - 1)
+        if director not in directors:
+            directors[director] = {
+                "profitabilities": [],
+                "gross": 0,
+                "count": 0
+            }
+        directors[director]["profitabilities"].append(profit)
+        directors[director]["gross"] += row["worldwideGross"]
+        directors[director]["count"] += 1
+
+    # Compute average profitability and format into list
+    data = [
+        (
+            director,
+            sum(d["profitabilities"]) / len(d["profitabilities"]),
+            d["gross"],
+            d["count"]
+        )
+        for director, d in directors.items()
+    ]
+
+    # Sort by profitability and take top N
+    data = sorted(data, key=lambda x: x[1], reverse=True)[:topN]
+
+    names = [d[0] for d in data]
+    profits = [d[1] for d in data]
+    gross = [d[2] for d in data]
+    counts = [d[3] for d in data]
+
+    fig = go.Figure(go.Scatter(
+        x=gross,
+        y=profits,
+        mode="markers+text",
+        text=names,
+        textposition="top center",
+        marker=dict(
+            size=[max(8, c * 3) for c in counts],
+            sizemode="area",
+            sizeref=2.*max(counts)/(100**2),
+            sizemin=8,
+            color=gross,
+            colorscale="earth",
+            colorbar=dict(title="Total Gross ($)")
+        ),
+        hovertemplate=(
+            "<b>%{text}</b><br>" +
+            "Profitability: %{y}<br>" +
+            "Gross: %{x:$,.0f}<br>" +
+            "Movies: %{marker.size:.0f}<extra></extra>"
+        )
+    ))
+
+    fig.update_layout(
+        title=f"Top {topN} Directors by Profitability",
+        xaxis_title="Total Worldwide Gross ($)",
+        yaxis_title="Profitability (%)",
+        template="plotly_white",
+        height=600,
+        margin=dict(t=50, l=50, r=50, b=50)
+    )
+
+    return fig
+
 def createActorsProfitability(top_n=5):
     actors_profitability = {}
     for movie in movies_data:
@@ -306,14 +385,6 @@ def updateQ1Graph(selectedData):
         )
     }
 
-@app.callback(
-    Output('directors-profitability-graph', 'figure'),
-    [Input('q3-top-n-slider', 'value')]
-)
-def updateQ3Graph(top_n):
-    fig = createDirectorsProfitability(top_n)
-    return fig
-    
 @app.callback(
     Output('actors-profitability-graph', 'figure'),
     [Input('q4-top-n-slider', 'value')]

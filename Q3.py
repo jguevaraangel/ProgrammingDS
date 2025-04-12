@@ -10,10 +10,6 @@ import plotly.graph_objects as go
 from dash import dcc, html
 from dash.dependencies import Input, Output
 
-###############################################################
-# BEGIN OF CODE TO MAKE IT WORK, NOT THE INTEGRATION ZONE YET #
-###############################################################
-
 # Begin of static mock movie loader
 
 
@@ -32,14 +28,6 @@ dirSliderMax = 100
 # Standalone app initialiser
 
 app = dash.Dash(__name__)
-
-###############################################################
-#  END OF CODE TO MAKE IT WORK, NOT THE INTEGRATION ZONE YET  #
-###############################################################
-
-#################################
-# BEGIN OF THE INTEGRATION ZONE #
-#################################
 
 # Begin of the AUXILIARY FUNCTIONS section
 
@@ -461,127 +449,116 @@ def createRolesByAwardCategory(selected_award: str) -> go.Figure:
 # End of the AUXILIARY FUNCTIONS section
 
 # Begin of the LAYOUT section
+def get_q3_layout():
+    app.layout = html.Div([
+        html.H1("Directors Dashboard", style={"textAlign": "center"}),
 
-app.layout = html.Div([
-    html.H1("Directors Dashboard", style={"textAlign": "center"}),
-
-    dcc.Slider(
-        id='q3-top-n-slider',
-        min=dirSliderMin,
-        max=dirSliderMax,  # Dynamically set the maximum value based on number of unique actors
-        step=1,
-        value=5,
-        marks={i: str(i) for i in range(dirSliderMin, dirSliderMax, math.floor((dirSliderMax-dirSliderMin)/10))},  # Adjust marks for more flexibility
-        tooltip={"placement": "bottom", "always_visible": True}
-    ),
-    html.H2("Profitability vs Worldwide Gross per Director"),
-    dcc.Graph(id='directors-profitability-graph'),
-
-    html.H2("Top Directors by Award Count"),
-    html.Div([
-        html.Label("Filter by Award Outcome:"),
-        dcc.Dropdown(
-            id="award-type-dropdown",
-            options=[
-                {"label": "All", "value": "all"},
-                {"label": "Wins Only", "value": "wins"},
-                {"label": "Nominations Only", "value": "nominations"},
-            ],
-            value="all",
-            clearable=False,
-            style={"width": "300px"}
-        )
-    ]),
-    dcc.Graph(id='top-awarded-directors'),
-
-    html.H2("Roles by Award Director Category"),
-    html.Div([
-        html.Label("Select Award Director Category:"),
-        dcc.Dropdown(
-            id="award-category-dropdown",
-            options=[
-                {"label": category, "value": category}
-                for category, count in (
-                    pd.DataFrame(moviesData)
-                    .assign(award_categories=lambda df: df["award_categories"].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else []))
-                    .explode("award_categories")
-                    .dropna(subset=["award_categories"])
-                    .query("award_categories.str.contains('director', case=False)", engine='python')
-                    .groupby("award_categories")["director_name"]
-                    .nunique()
-                    .items()
-                ) if count > 3
-            ],
-            placeholder="Choose a director-related award...",
-            style={"width": "400px"}
+        dcc.Slider(
+            id='q3-top-n-slider',
+            min=dirSliderMin,
+            max=dirSliderMax,  # Dynamically set the maximum value based on number of unique actors
+            step=1,
+            value=5,
+            marks={i: str(i) for i in range(dirSliderMin, dirSliderMax, math.floor((dirSliderMax-dirSliderMin)/10))},  # Adjust marks for more flexibility
+            tooltip={"placement": "bottom", "always_visible": True}
         ),
-        dcc.Graph(id="roles-stacked-bar")
-    ]),
+        html.H2("Profitability vs Worldwide Gross per Director"),
+        dcc.Graph(id='directors-profitability-graph'),
 
-    html.H2("IMDb Rating vs Metascore per Director"),
-    dcc.Graph(id='ratings-vs-metascore')
-])
+        html.H2("Top Directors by Award Count"),
+        html.Div([
+            html.Label("Filter by Award Outcome:"),
+            dcc.Dropdown(
+                id="award-type-dropdown",
+                options=[
+                    {"label": "All", "value": "all"},
+                    {"label": "Wins Only", "value": "wins"},
+                    {"label": "Nominations Only", "value": "nominations"},
+                ],
+                value="all",
+                clearable=False,
+                style={"width": "300px"}
+            )
+        ]),
+        dcc.Graph(id='top-awarded-directors'),
+
+        html.H2("Roles by Award Director Category"),
+        html.Div([
+            html.Label("Select Award Director Category:"),
+            dcc.Dropdown(
+                id="award-category-dropdown",
+                options=[
+                    {"label": category, "value": category}
+                    for category, count in (
+                        pd.DataFrame(moviesData)
+                        .assign(award_categories=lambda df: df["award_categories"].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else []))
+                        .explode("award_categories")
+                        .dropna(subset=["award_categories"])
+                        .query("award_categories.str.contains('director', case=False)", engine='python')
+                        .groupby("award_categories")["director_name"]
+                        .nunique()
+                        .items()
+                    ) if count > 3
+                ],
+                placeholder="Choose a director-related award...",
+                style={"width": "400px"}
+            ),
+            dcc.Graph(id="roles-stacked-bar")
+        ]),
+
+        html.H2("IMDb Rating vs Metascore per Director"),
+        dcc.Graph(id='ratings-vs-metascore')
+    ])
+    return app.layout
 
 
 # End of the LAYOUT section
 
 # Begin of the CALLBACK section
 
-
-@app.callback(
-    Output('directors-profitability-graph', 'figure'),
-    [Input('q3-top-n-slider', 'value')]
-)
-def updateQ3Graph(topN: int) -> go.Figure:
-    try:
-        return createDirectorsProfitabilityBubble(topN)
-    except Exception as e:
-        print(f"Error in updateQ3Graph: {e}")
-        return go.Figure()
-
-
-@app.callback(
-    Output('top-awarded-directors', 'figure'),
-    [Input('q3-top-n-slider', 'value'),
-     Input('award-type-dropdown', 'value')]
-)
-def updateAwardsGraph(topN, award_filter):
-    return createTopAwardedDirectorsTreemap(topN, award_filter)
+def register_q3_callbacks(app):
+    @app.callback(
+        Output('directors-profitability-graph', 'figure'),
+        [Input('q3-top-n-slider', 'value')]
+    )
+    def updateQ3Graph(topN: int) -> go.Figure:
+        try:
+            return createDirectorsProfitabilityBubble(topN)
+        except Exception as e:
+            print(f"Error in updateQ3Graph: {e}")
+            return go.Figure()
 
 
-@app.callback(
-    Output("roles-stacked-bar", "figure"),
-    [Input("award-category-dropdown", "value")]
-)
-def updateRolesGraph(selected_award):
-    if not selected_award:
-        return go.Figure()
-    return createRolesByAwardCategory(selected_award)
+    @app.callback(
+        Output('top-awarded-directors', 'figure'),
+        [Input('q3-top-n-slider', 'value'),
+        Input('award-type-dropdown', 'value')]
+    )
+    def updateAwardsGraph(topN, award_filter):
+        return createTopAwardedDirectorsTreemap(topN, award_filter)
+
+
+    @app.callback(
+        Output("roles-stacked-bar", "figure"),
+        [Input("award-category-dropdown", "value")]
+    )
+    def updateRolesGraph(selected_award):
+        if not selected_award:
+            return go.Figure()
+        return createRolesByAwardCategory(selected_award)
 
 
 
-@app.callback(
-    Output('ratings-vs-metascore', 'figure'),
-    [Input('q3-top-n-slider', 'value')]
-)
-def updateScatterGraph(_):
-    return createRatingVsMetascoreScatter()
+    @app.callback(
+        Output('ratings-vs-metascore', 'figure'),
+        [Input('q3-top-n-slider', 'value')]
+    )
+    def updateScatterGraph(_):
+        return createRatingVsMetascoreScatter()
 
 
 # End of the CALLBACK section
 
-#################################
-#  END OF THE INTEGRATION ZONE  #
-#################################
-
-##########################################
-# BEGIN OF THE STANDALONE EXECUTION ZONE #
-##########################################
-
 
 if __name__ == "__main__":
     app.run(debug=True, port=8051)
-
-##########################################
-#  END OF THE STANDALONE EXECUTION ZONE  #
-##########################################
