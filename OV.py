@@ -1,11 +1,12 @@
-import networkx as nx
-from dash import Dash, dcc, html
+import math
+
 import dash
 import dash_bootstrap_components as dbc
-from dash.dependencies import Input, Output
-import plotly.graph_objects as go
+import networkx as nx
 import pandas as pd
-import math
+import plotly.graph_objects as go
+from dash import Dash, dcc, html
+from dash.dependencies import Input, Output
 
 # Initialize the Dash app
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], suppress_callback_exceptions=True)
@@ -384,4 +385,4 @@ def highlightButton(overview_clicks, q1_clicks, q2_clicks, q3_clicks, q4_clicks)
 
 # Run the app
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, port=8051)
