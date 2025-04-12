@@ -1,11 +1,14 @@
-# pip install plotly dash
+ # pip install plotly dash
+
+import ast
+import math
 
 import dash
-from dash import dcc
-from dash import html
-from dash.dependencies import Input, Output
+import pandas as pd
+import plotly.express as px
 import plotly.graph_objects as go
-import math
+from dash import dcc, html
+from dash.dependencies import Input, Output
 
 ###############################################################
 # BEGIN OF CODE TO MAKE IT WORK, NOT THE INTEGRATION ZONE YET #
@@ -13,40 +16,18 @@ import math
 
 # Begin of static mock movie loader
 
+
 def loadMoviesFromCSV():
-    return [
-        {"title": "Movie01", "director": "Director01", "actors": ["Actor01", "Actor02", "Actor03", "Actor04", "Actor05"], "awards": [], "grossing": 25.5, "budget": 10.8},
-        {"title": "Movie02", "director": "Director02", "actors": ["Actor06", "Actor07", "Actor08", "Actor09", "Actor10"], "awards": [], "grossing": 6.0, "budget": 1.0},
-        {"title": "Movie03", "director": "Director03", "actors": ["Actor11", "Actor12", "Actor13", "Actor14", "Actor15"], "awards": [{"country": "UK", "category": "Best Soundtrack"}, {"country": "USA", "category": "Best Soundtrack"}, {"country": "UK", "category": "Best Sound"}, {"country": "USA", "category": "Best Special Effects"}, {"country": "USA", "category": "Best Sound"}, {"country": "USA", "category": "Best Song"}], "grossing": 60.2, "budget": 40.9},
-        {"title": "Movie04", "director": "Director04", "actors": ["Actor16", "Actor17", "Actor18", "Actor19", "Actor20"], "awards": [], "grossing": 1.7, "budget": 1.2},
-        {"title": "Movie05", "director": "Director05", "actors": ["Actor21", "Actor22", "Actor23", "Actor24", "Actor25"], "awards": [], "grossing": 1.5, "budget": 0.8},
-        {"title": "Movie06", "director": "Director06", "actors": ["Actor26", "Actor27", "Actor28", "Actor29", "Actor30"], "awards": [{"country": "Spain", "category": "Best Actor"}, {"country": "Spain", "category": "Best Actress"}, {"country": "Spain", "category": "Best Original Screenplay"}, {"country": "Spain", "category": "Best Film"}, {"country": "Spain", "category": "Best Song"}, {"country": "Spain", "category": "Best Soundtrack"}, {"country": "USA", "category": "Best Foreign Film"}], "grossing": 0.6, "budget": 1.0},
-        {"title": "Movie07", "director": "Director07", "actors": ["Actor31", "Actor32", "Actor33", "Actor34", "Actor35"], "awards": [], "grossing": 3.2, "budget": 2.9},
-        {"title": "Movie08", "director": "Director08", "actors": ["Actor36", "Actor37", "Actor38", "Actor39", "Actor40"], "awards": [{"country": "UK", "category": "Best Actress"}], "grossing": 51.7, "budget": 41.2},
-        {"title": "Movie09", "director": "Director09", "actors": ["Actor41", "Actor42", "Actor43", "Actor44", "Actor45"], "awards": [], "grossing": 2.5, "budget": 1.8},
-        {"title": "Movie10", "director": "Director01", "actors": ["Actor46", "Actor02", "Actor47", "Actor48", "Actor05"], "awards": [], "grossing": 2.0, "budget": 1.0},
-        {"title": "Movie11", "director": "Director10", "actors": ["Actor49", "Actor50", "Actor51", "Actor52", "Actor53"], "awards": [], "grossing": 1.2, "budget": 6.9},
-        {"title": "Movie12", "director": "Director11", "actors": ["Actor54", "Actor55", "Actor56", "Actor57", "Actor58"], "awards": [], "grossing": 11.7, "budget": 9.2},
-        {"title": "Movie13", "director": "Director12", "actors": ["Actor59", "Actor60", "Actor61", "Actor62", "Actor63"], "awards": [], "grossing": 6.5, "budget": 7.8},
-        {"title": "Movie14", "director": "Director13", "actors": ["Actor64", "Actor65", "Actor66", "Actor67", "Actor68"], "awards": [], "grossing": 9.0, "budget": 11.0},
-        {"title": "Movie15", "director": "Director02", "actors": ["Actor69", "Actor06", "Actor70", "Actor71", "Actor01"], "awards": [{"country": "USA", "category": "Best Actress"}, {"country": "USA", "category": "Best Soundtrack"}], "grossing": 21.2, "budget": 20.9},
-        {"title": "Movie16", "director": "Director14", "actors": ["Actor72", "Actor73", "Actor74", "Actor75", "Actor76"], "awards": [], "grossing": 17.7, "budget": 11.2},
-        {"title": "Movie17", "director": "Director15", "actors": ["Actor77", "Actor78", "Actor79", "Actor80", "Actor81"], "awards": [], "grossing": 2.5, "budget": 3.8},
-        {"title": "Movie18", "director": "Director16", "actors": ["Actor82", "Actor83", "Actor84", "Actor85", "Actor86"], "awards": [], "grossing": 2.0, "budget": 1.0},
-        {"title": "Movie19", "director": "Director02", "actors": ["Actor01", "Actor05", "Actor03", "Actor87", "Actor04"], "awards": [], "grossing": 1.2, "budget": 0.9},
-        {"title": "Movie20", "director": "Director04", "actors": ["Actor88", "Actor16", "Actor89", "Actor90", "Actor20"], "awards": [{"country": "UK", "category": "Best Film"}, {"country": "UK", "category": "Best Director"}, {"country": "Spain", "category": "Best European Film"}, {"country": "UK", "category": "Best Actor"}, {"country": "UK", "category": "Best Adapted Screenplay"}, {"country": "UK", "category": "Best Supporting Actress"}], "grossing": 51.7, "budget": 31.2},
-    ]
+    directorsInfo = pd.read_csv("./outputs/Q3/directors_info.csv")
+    return directorsInfo.to_dict("records")
+
 
 moviesData = loadMoviesFromCSV()
 
 # End of static mock movie loader
 
-# Begin of layout settings
-
 dirSliderMin = 1
-dirSliderMax = len(set([movie["director"] for movie in moviesData]))
-
-# End of layout settings
+dirSliderMax = 100
 
 # Standalone app initialiser
 
@@ -62,15 +43,29 @@ app = dash.Dash(__name__)
 
 # Begin of the AUXILIARY FUNCTIONS section
 
+def clean_money_column(series):
+    return series.replace("[\$,]", "", regex=True)
+
+
 def createDirectorsProfitability(topN: int = 5) -> go.Figure:
+    df = pd.DataFrame(moviesData)
+    df["budget"] = clean_money_column(df["budget"])
+    df["worldwideGross"] = clean_money_column(df["worldwideGross"])
+
+    df["budget"] = pd.to_numeric(df["budget"], errors="coerce")
+    df["worldwideGross"] = pd.to_numeric(df["worldwideGross"], errors="coerce")
+
+    df = df.dropna(subset=["budget", "worldwideGross"])
+
     # Calculate profitability for each director
     directorsProfitability = {}
-    for movie in moviesData:
-        director = movie["director"]
-        profitability = 100 * (movie["grossing"] / movie["budget"] - 1)
+    for _, row in df.iterrows():
+        director = row["director_name"]
+        profitability = 100 * (row["worldwideGross"] / row["budget"] - 1)
         if director not in directorsProfitability:
             directorsProfitability[director] = []
         directorsProfitability[director].append(profitability)
+
 
     # Aggregate profitability by director
     directorNames = list(directorsProfitability.keys())
@@ -87,20 +82,131 @@ def createDirectorsProfitability(topN: int = 5) -> go.Figure:
     # Create bar plot for the top directors
     fig = go.Figure([go.Bar(x=topDirectorNames, y=topDirectorProfitability)])
     fig.update_layout(
-        title="Top Directors by Profitability",
+        title=f"Top {topN} Directors by Profitability",
         xaxis_title="Director",
         yaxis_title="Profitability (%)",
         showlegend=False
     )
+    return fig
+
+
+def createTopAwardedDirectors(topN: int = 5) -> go.Figure:
+    df = pd.DataFrame(moviesData)
+    # Drop rows with missing or empty award names
+    df = df[df["award_name"].notna() & (df["award_name"].str.strip() != "")]
+    # Count awards per director
+    award_counts = (
+        df.groupby("director_name")["award_name"]
+        .count()
+        .sort_values(ascending=False)
+        .head(topN)
+    )
+    fig = go.Figure(
+        data=[
+            go.Bar(
+                x=award_counts.index.tolist(),
+                y=award_counts.values.tolist()
+            )
+        ]
+    )
+    fig.update_layout(
+        title=f"Top {topN} Directors by Award Count",
+        xaxis_title="Director",
+        yaxis_title="Number of Awards"
+    )
 
     return fig
+
+
+def createRatingVsMetascoreScatter() -> go.Figure:
+    df = pd.DataFrame(moviesData)
+
+    # Clean 'imdbRating' (commas to dots)
+    df["imdbRating"] = df["imdbRating"].astype(str).str.replace(",", ".")
+    df["imdbRating"] = pd.to_numeric(df["imdbRating"], errors="coerce")
+
+    # Convert metascore to numeric
+    df["metascore"] = pd.to_numeric(df["metascore"], errors="coerce")
+
+    df = df.dropna(subset=["imdbRating", "metascore"])
+
+    if df.empty:
+        print("No data left after cleaning.")
+        return go.Figure()
+
+    # Group by director and compute mean scores
+    avg_scores = df.groupby("director_name")[["imdbRating", "metascore"]].mean().reset_index()
+
+    # Create scatter plot using go.Figure
+    fig = go.Figure()
+
+    fig.add_trace(go.Scatter(
+        x=avg_scores["metascore"],
+        y=avg_scores["imdbRating"],
+        mode='markers',
+        marker=dict(size=8, color='rgba(0, 123, 255, 0.7)', line=dict(width=1)),
+        text=avg_scores["director_name"],
+        hovertemplate='<b>%{text}</b><br>Metascore: %{x}<br>IMDb: %{y}<extra></extra>',
+    ))
+
+    fig.update_layout(
+        title="Director: IMDb Rating vs Metascore",
+        xaxis_title="Average Metascore",
+        yaxis_title="Average IMDb Rating",
+        template="plotly_dark"
+    )
+
+    return fig
+
+
+def createDirectorsByGrossing(topN=5) -> go.Figure:
+    df = pd.DataFrame(moviesData)
+
+    # Optional: Clean currency strings if needed
+    if df["worldwideGross"].dtype == object:
+        df["worldwideGross"] = df["worldwideGross"].astype(str).str.replace(r"[\$,]", "", regex=True)
+
+    df["worldwideGross"] = pd.to_numeric(df["worldwideGross"], errors="coerce")
+    df = df.dropna(subset=["worldwideGross"])
+    if df.empty:
+        print("No data available for worldwideGross.")
+        return go.Figure()
+
+    # Group by director and sum gross
+    gross = (
+        df.groupby("director_name")["worldwideGross"]
+        .sum()
+        .sort_values(ascending=False)
+        .head(topN)
+    )
+
+    # Create bar chart
+    fig = go.Figure(
+        data=[
+            go.Bar(
+                x=gross.index.tolist(),
+                y=gross.values.tolist()
+            )
+        ]
+    )
+
+    fig.update_layout(
+        title=f"Top {topN} Directors by Worldwide Gross",
+        xaxis_title="Director",
+        yaxis_title="Total Worldwide Gross"
+    )
+
+    return fig
+
+
 # End of the AUXILIARY FUNCTIONS section
 
 # Begin of the LAYOUT section
+
+
 app.layout = html.Div([
-    html.H1("Directors' Profitability"),
-    
-    # Slider to select number of top directors
+    html.H1("Directors Dashboard", style={"textAlign": "center"}),
+
     dcc.Slider(
         id='q3-top-n-slider',
         min=dirSliderMin,
@@ -110,22 +216,60 @@ app.layout = html.Div([
         marks={i: str(i) for i in range(dirSliderMin, dirSliderMax, math.floor((dirSliderMax-dirSliderMin)/10))},  # Adjust marks for more flexibility
         tooltip={"placement": "bottom", "always_visible": True}
     ),
-    
-    # Plotly graph
-    dcc.Graph(id='directors-profitability-graph')
+    html.H2("Directors Profitability"),
+    dcc.Graph(id='directors-profitability-graph'),
+
+    html.H2("Top Directors by Award Count"),
+    dcc.Graph(id='top-awarded-directors'),
+
+    html.H2("Total Worldwide Gross by Director"),
+    dcc.Graph(id='grossing-directors'),
+
+    html.H2("IMDb Rating vs Metascore per Director"),
+    dcc.Graph(id='ratings-vs-metascore')
 ])
+
 
 # End of the LAYOUT section
 
 # Begin of the CALLBACK section
+
 
 @app.callback(
     Output('directors-profitability-graph', 'figure'),
     [Input('q3-top-n-slider', 'value')]
 )
 def updateQ3Graph(topN: int) -> go.Figure:
-    fig = createDirectorsProfitability(topN)
-    return fig
+    try:
+        return createDirectorsProfitability(topN)
+    except Exception as e:
+        print(f"Error in updateQ3Graph: {e}")
+        return go.Figure()
+
+
+@app.callback(
+    Output('top-awarded-directors', 'figure'),
+    [Input('q3-top-n-slider', 'value')]
+)
+def updateAwardsGraph(topN: int) -> go.Figure:
+    return createTopAwardedDirectors(topN)
+
+
+@app.callback(
+    Output('grossing-directors', 'figure'),
+    [Input('q3-top-n-slider', 'value')]
+)
+def updateGrossGraph(topN: int) -> go.Figure:
+    return createDirectorsByGrossing(topN)
+
+
+@app.callback(
+    Output('ratings-vs-metascore', 'figure'),
+    [Input('q3-top-n-slider', 'value')]
+)
+def updateScatterGraph(_):
+    return createRatingVsMetascoreScatter()
+
 
 # End of the CALLBACK section
 
@@ -137,8 +281,9 @@ def updateQ3Graph(topN: int) -> go.Figure:
 # BEGIN OF THE STANDALONE EXECUTION ZONE #
 ##########################################
 
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, port=8051)
 
 ##########################################
 #  END OF THE STANDALONE EXECUTION ZONE  #
