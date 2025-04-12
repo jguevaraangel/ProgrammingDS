@@ -272,36 +272,42 @@ def update_graphs(awards_range, metric):
     if metric == 'mean_box_office':
         filtered_movies = filtered_movies.sort_values(by=['worldwideGross_M'], ascending=False)
     else:
-        # For median, show those with a balance of rating and box office
-        filtered_movies['combined_score'] = filtered_movies['worldwideGross_M'] * filtered_movies['imdbRating'] / 10
-        filtered_movies = filtered_movies.sort_values(by=['combined_score'], ascending=False)
-    
+       filtered_movies['combined_score'] = filtered_movies['worldwideGross_M'] * filtered_movies['imdbRating'] / 10
+       filtered_movies = filtered_movies.sort_values(by=['combined_score'], ascending=False)
+
     # Limit to a manageable number of movies
     top_movies = filtered_movies.head(100)
-    
-    # FIX: Create scatter plot of movies with explicit hover template for each point
+
+    # Create scatter plot of movies
     movie_fig = go.Figure()
-    
+
     # Group by region for color consistency
     for region in top_movies['region'].unique():
         region_movies = top_movies[top_movies['region'] == region]
-        
+    
         movie_fig.add_trace(go.Scatter(
             x=region_movies['imdbRating'],
             y=region_movies['worldwideGross_M'],
             mode='markers',
             marker=dict(
-                size=region_movies['award_count'].apply(lambda x: min(30, max(10, x * 5))),  # Scale size better
-                color={
-                    'USA': 'rgb(65, 105, 225)',
-                    'UK': 'rgb(147, 112, 219)',
-                    'Spain': 'rgb(218, 165, 32)',
-                    'Other': 'rgb(100, 100, 100)'
+                size=region_movies['award_count'].apply(
+                lambda x: np.interp(x, [0, analysis_df['award_count'].max()], [8, 30])  # Escala mejor
+                ),
+               color={
+                    'USA': 'rgb(255, 215, 0)',        # amarillo
+                    'UK': 'rgb(30, 144, 255)',        # azul
+                    'Spain': 'rgb(220, 20, 60)',      # rojo
+                    'Other': 'rgb(100, 100, 100)'     # gris
                 }.get(region, 'rgb(100, 100, 100)'),
                 opacity=0.8,
                 line=dict(width=1, color='white')
             ),
-            name=region,
+            name={
+                'USA': '🇺🇸 Estados Unidos',
+                'UK': '🇬🇧 Reino Unido',
+                'Spain': '🇪🇸 España',
+                'Other': '🌍 Otro'
+            }.get(region, region),
             text=[
                 f"<b>{row['title']}</b><br>" +
                 f"Awards: {int(row['award_count'])}<br>" +
@@ -313,33 +319,7 @@ def update_graphs(awards_range, metric):
             hoverinfo='text',
             hoverlabel=dict(bgcolor='rgba(0,0,0,0.8)', font=dict(color='white')),
         ))
-    
-    # Add labels for featured movies
-    # Identify movies to label (top performers in both box office and awards)
-    highlight_movies = pd.concat([
-        top_movies.nlargest(5, 'worldwideGross_M'),
-        top_movies.nlargest(5, 'award_count')
-    ]).drop_duplicates()
-    
-    for i, row in highlight_movies.iterrows():
-        movie_fig.add_annotation(
-            x=row['imdbRating'],
-            y=row['worldwideGross_M'],
-            text=row['title'],
-            showarrow=True,
-            arrowhead=1,
-            arrowsize=1,
-            arrowwidth=1,
-            arrowcolor="white",
-            font=dict(size=9, color="white"),
-            bgcolor="rgba(0,0,0,0.7)",
-            bordercolor="white",
-            borderwidth=1,
-            borderpad=4,
-            ax=20,
-            ay=-30
-        )
-    
+
     # Update layout of second chart
     movie_fig.update_layout(
         title=f'Movies with {awards_range[0]} to {awards_range[1]} Awards (Showing top {len(top_movies)} of {len(filtered_movies)} movies)',
@@ -359,13 +339,13 @@ def update_graphs(awards_range, metric):
         margin=dict(l=40, r=40, t=50, b=40),
         hovermode='closest'
     )
-    
+
     # Handle log scale for y-axis if the range is large
     if top_movies['worldwideGross_M'].max() / (top_movies['worldwideGross_M'].min() + 0.1) > 100:
         movie_fig.update_yaxes(type='log', tickformat='$,.0f')
     else:
         movie_fig.update_yaxes(tickformat='$,.0f')
-    
+
     movie_fig.update_xaxes(range=[min(top_movies['imdbRating']) - 0.5, 10])
     
     return bar_fig, movie_fig
