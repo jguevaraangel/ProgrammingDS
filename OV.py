@@ -2,6 +2,7 @@ import ast
 import math
 import os
 import re
+import json
 from typing import Dict, List, Tuple
 
 import dash
@@ -11,6 +12,10 @@ import pandas as pd
 import plotly.graph_objects as go
 from dash import Dash, dcc, html
 from dash.dependencies import Input, Output
+import plotly.express as px
+from plotly.subplots import make_subplots
+import numpy as np
+from scipy.stats import gaussian_kde
 
 # Initialize the Dash app
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], suppress_callback_exceptions=True)
@@ -60,7 +65,7 @@ def validateMovieData(moviesDF: pd.DataFrame):
                 raise ValueError(f"Invalid actor data at row {index}: {actor}")
 
 
-def loadMoviesFromCSV(filePath: str) -> Tuple[List[Dict], Dict[str, str]]:
+def loadMoviesFromCSV(filePath: str) -> Tuple[pd.DataFrame, List[Dict], Dict[str, str]]:
     """
     Reads movie data from a CSV file and returns a list of movies and a dictionary
     mapping IMDb URLs to actor/director names.
@@ -98,10 +103,10 @@ def loadMoviesFromCSV(filePath: str) -> Tuple[List[Dict], Dict[str, str]]:
         for actor in movie['actors']:
             directorsThespiansURLtoNameDict[actor['url']] = actor['name']
 
-    return moviesData, directorsThespiansURLtoNameDict
+    return moviesDF, moviesData, directorsThespiansURLtoNameDict
 
 
-moviesData, directorsThespiansURLtoNameDict = loadMoviesFromCSV('outputs/movies_all_countries.csv')
+moviesDF, moviesData, directorsThespiansURLtoNameDict = loadMoviesFromCSV('outputs/movies_all_countries.csv')
 
 
 def loadMoviesFromCSVDirectors():
@@ -114,7 +119,7 @@ def loadMoviesFromCSVDirectors():
 
     :return: A pandas DataFrame containing the contents of the directors_info.csv file.
     """
-    directorsInfo = pd.read_csv("./outputs/Q3/directors_info.csv")
+    directorsInfo = pd.read_csv("./outputs/directors_info.csv")
     directorsInfo = directorsInfo.to_dict("records")
     directorsInfo = pd.DataFrame(directorsInfo)
     return directorsInfo
@@ -122,233 +127,102 @@ def loadMoviesFromCSVDirectors():
 
 moviesDataDirectors = loadMoviesFromCSVDirectors()
 
+def loadMoviesFromCSVQ2(file_path='outputs/movies_all_countries.csv'):
+    df = pd.read_csv(file_path)
+    return df
 
-def loadMoviesFromCSVQ2():
-    return [
-        {"title": "Movie01", "director": "Director01", "actors": ["Actor01", "Actor02", "Actor03", "Actor04", "Actor05"], "awards": [], "grossing": 25.5, "budget": 10.8},
-        {"title": "Movie02", "director": "Director02", "actors": ["Actor06", "Actor07", "Actor08", "Actor09", "Actor10"], "awards": [], "grossing": 6.0, "budget": 1.0},
-        {"title": "Movie03", "director": "Director03", "actors": ["Actor11", "Actor12", "Actor13", "Actor14", "Actor15"], "awards": [{"country": "UK", "category": "Best Soundtrack"}, {"country": "USA", "category": "Best Soundtrack"}, {"country": "UK", "category": "Best Sound"}, {"country": "USA", "category": "Best Special Effects"}, {"country": "USA", "category": "Best Sound"}, {"country": "USA", "category": "Best Song"}], "grossing": 60.2, "budget": 40.9},
-        {"title": "Movie04", "director": "Director04", "actors": ["Actor16", "Actor17", "Actor18", "Actor19", "Actor20"], "awards": [], "grossing": 1.7, "budget": 1.2},
-        {"title": "Movie05", "director": "Director05", "actors": ["Actor21", "Actor22", "Actor23", "Actor24", "Actor25"], "awards": [], "grossing": 1.5, "budget": 0.8},
-        {"title": "Movie06", "director": "Director06", "actors": ["Actor26", "Actor27", "Actor28", "Actor29", "Actor30"], "awards": [{"country": "Spain", "category": "Best Actor"}, {"country": "Spain", "category": "Best Actress"}, {"country": "Spain", "category": "Best Original Screenplay"}, {"country": "Spain", "category": "Best Film"}, {"country": "Spain", "category": "Best Song"}, {"country": "Spain", "category": "Best Soundtrack"}, {"country": "USA", "category": "Best Foreign Film"}], "grossing": 0.6, "budget": 1.0},
-        {"title": "Movie07", "director": "Director07", "actors": ["Actor31", "Actor32", "Actor33", "Actor34", "Actor35"], "awards": [], "grossing": 3.2, "budget": 2.9},
-        {"title": "Movie08", "director": "Director08", "actors": ["Actor36", "Actor37", "Actor38", "Actor39", "Actor40"], "awards": [{"country": "UK", "category": "Best Actress"}], "grossing": 51.7, "budget": 41.2},
-        {"title": "Movie09", "director": "Director09", "actors": ["Actor41", "Actor42", "Actor43", "Actor44", "Actor45"], "awards": [], "grossing": 2.5, "budget": 1.8},
-        {"title": "Movie10", "director": "Director01", "actors": ["Actor46", "Actor02", "Actor47", "Actor48", "Actor05"], "awards": [], "grossing": 2.0, "budget": 1.0},
-        {"title": "Movie11", "director": "Director10", "actors": ["Actor49", "Actor50", "Actor51", "Actor52", "Actor53"], "awards": [], "grossing": 1.2, "budget": 6.9},
-        {"title": "Movie12", "director": "Director11", "actors": ["Actor54", "Actor55", "Actor56", "Actor57", "Actor58"], "awards": [], "grossing": 11.7, "budget": 9.2},
-        {"title": "Movie13", "director": "Director12", "actors": ["Actor59", "Actor60", "Actor61", "Actor62", "Actor63"], "awards": [], "grossing": 6.5, "budget": 7.8},
-        {"title": "Movie14", "director": "Director13", "actors": ["Actor64", "Actor65", "Actor66", "Actor67", "Actor68"], "awards": [], "grossing": 9.0, "budget": 11.0},
-        {"title": "Movie15", "director": "Director02", "actors": ["Actor69", "Actor06", "Actor70", "Actor71", "Actor01"], "awards": [{"country": "USA", "category": "Best Actress"}, {"country": "USA", "category": "Best Soundtrack"}], "grossing": 21.2, "budget": 20.9},
-        {"title": "Movie16", "director": "Director14", "actors": ["Actor72", "Actor73", "Actor74", "Actor75", "Actor76"], "awards": [], "grossing": 17.7, "budget": 11.2},
-        {"title": "Movie17", "director": "Director15", "actors": ["Actor77", "Actor78", "Actor79", "Actor80", "Actor81"], "awards": [], "grossing": 2.5, "budget": 3.8},
-        {"title": "Movie18", "director": "Director16", "actors": ["Actor82", "Actor83", "Actor84", "Actor85", "Actor86"], "awards": [], "grossing": 2.0, "budget": 1.0},
-        {"title": "Movie19", "director": "Director02", "actors": ["Actor01", "Actor05", "Actor03", "Actor87", "Actor04"], "awards": [], "grossing": 1.2, "budget": 0.9},
-        {"title": "Movie20", "director": "Director04", "actors": ["Actor88", "Actor16", "Actor89", "Actor90", "Actor20"], "awards": [{"country": "UK", "category": "Best Film"}, {"country": "UK", "category": "Best Director"}, {"country": "Spain", "category": "Best European Film"}, {"country": "UK", "category": "Best Actor"}, {"country": "UK", "category": "Best Adapted Screenplay"}, {"country": "UK", "category": "Best Supporting Actress"}], "grossing": 51.7, "budget": 31.2},
-    ]
+def process_movie_data(df):
+    # Clean monetary values
+    for col in ['budget', 'domesticGross', 'worldwideGross']:
+        df[col] = df[col].str.replace('$', '').str.replace(',', '', regex=False)
+        df[col] = pd.to_numeric(df[col], errors='coerce')
 
+    # Convert to millions
+    df['worldwideGross_M'] = df['worldwideGross'] / 1000000
 
-moviesDataQ2 = loadMoviesFromCSVQ2()
+    # Convert imdbRating to numeric
+    df['imdbRating'] = pd.to_numeric(df['imdbRating'], errors='coerce')
 
+    # Count awards
+    def count_awards(awards_str):
+        try:
+            awards_str = awards_str.replace("'", '"')
+            if awards_str == "[]":
+                return 0
+            awards_list = json.loads(awards_str)
+            return len(awards_list)
+        except:
+            if awards_str == "[]":
+                return 0
+            matches = re.findall(r"'[^']*'", awards_str)
+            return len(matches)
 
-# End of CSV loading section
+    df['award_count'] = df['awards'].apply(count_awards)
 
-# Define the app layout
-app.layout = html.Div(
-    children=[
-        html.H1("Visual Analytics Dashboard", style={'textAlign': 'center'}),
-        html.Div(
-            children=[
-                html.Button("Overview", id="btn-overview", n_clicks=0, className="btn"),
-                html.Button("Q1", id="btn-q1", n_clicks=0, className="btn"),
-                html.Button("Q2", id="btn-q2", n_clicks=0, className="btn"),
-                html.Button("Q3", id="btn-q3", n_clicks=0, className="btn"),
-                html.Button("Q4", id="btn-q4", n_clicks=0, className="btn"),
-            ],
-            style={'display': 'flex', 'justify-content': 'space-between', 'margin-bottom': '20px'}
-        ),
-        html.Div(id="page-content"),
-    ]
-)
+    # Map countries to regions
+    country_mapping = {
+        'US': 'USA',
+        'GB': 'UK',
+        'ES': 'Spain'
+    }
+    df['region'] = df['country'].map(lambda x: country_mapping.get(x, 'Other'))
+
+    return df
 
 
-# Functions for creating content for Q1-Q4
-def createQ1Content():
-    forceGraphID = "force-directed-graph"
-    forceGraphTitle = "Director-Actor Connections"
-
-    return html.Div([
-        html.H1(forceGraphTitle),
-        dcc.Graph(
-            id=forceGraphID,
-            figure={
-                'data': [],
-                'layout': go.Layout(
-                    title=forceGraphTitle,
-                    hovermode="closest",
-                    showlegend=False,
-                    xaxis=dict(showgrid=False, zeroline=False),
-                    yaxis=dict(showgrid=False, zeroline=False),
-                    margin=dict(l=0, r=0, b=0, t=0)
-                )
-            },
-            style={"width": "100%", "height": "600px"}
-        ),
-
-        # Popover for node click
-        dbc.Popover(
-            [
-                dbc.PopoverHeader(id="popover-header"),
-                dbc.PopoverBody(id="popover-body")
-            ],
-            id="popover",
-            is_open=False,
-            target=forceGraphID,
-            placement="top-start",
-        ),
-    ])
-
-
-def createQ2Content():
-    data = []
-    for movie in moviesDataQ2:
-        data.append({
-            "Title": movie["title"],
-            "AwardCount": len(movie["awards"]),  # Count awards
-            "Grossing": movie["grossing"]
-        })
-    df = pd.DataFrame(data)
-
-    # Plotly scatter plot for Awards vs Grossing
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=df["AwardCount"],
-        y=df["Grossing"],
-        mode="markers",
-        marker=dict(color=df["AwardCount"], colorscale='Viridis', size=12)
-    ))
-
-    fig.update_layout(
-        title='Awards vs Grossing for Movies',
-        xaxis_title='Number of Awards',
-        yaxis_title='Worldwide Grossing ($)',
-        template='plotly_dark',
-        showlegend=False,
-        xaxis=dict(range=[0, df["AwardCount"].max() + 1]),  # Ensure awards axis starts at 0
-        yaxis=dict(range=[df["Grossing"].min() - 1, df["Grossing"].max() + 1])  # Adjust range for better viewing
+# Load and process
+raw_movies_df = loadMoviesFromCSVQ2()
+movies_df = raw_movies_df.copy()
+movies_df = process_movie_data(movies_df)
+    
+def processMovieDataQ4(data):
+    data["title"] = data["title"].apply(lambda x: re.sub(r"^\d+\.\s*", "", x))
+    data["budget"] = (
+        data["budget"].str.replace(",", "").str.replace("$", "").astype(float)
+    )
+    data["grossing"] = (
+        data["domesticGross"].str.replace(",", "").str.replace("$", "").astype(float)
     )
 
-    return html.Div([
-        html.H3("Q2: Awards vs Grossing"),
-        dcc.Graph(figure=fig)  # Display the Plotly graph here
-    ])
+    parsed_thespians = []
+    for thespians_list in data["thespians"]:
+        thespians_list = ast.literal_eval(thespians_list)
+        if len(thespians_list) == 0:
+            parsed_thespians.append([])
+        else:
+            parsed_thespians.append([obj["name"] for obj in thespians_list])
+    data["actors"] = parsed_thespians
 
+    json_list = (
+        data[
+            [
+                "title",
+                "country",
+                "imdbRating",
+                "imdbVotes",
+                "metascore",
+                "budget",
+                "awards",
+                "directors",
+                "actors",
+                "grossing",
+            ]
+        ]
+        .dropna()
+        .to_dict(orient="records")
+    )
+    return json_list
 
-def createQ3Content():
-    dirSliderMin = 1
-    dirSliderMax = 100
+movies_data_q4 = raw_movies_df.copy()
+movies_data_q4_json = processMovieDataQ4(movies_data_q4)
 
-    app.layout = html.Div([
-        html.H1("Directors Dashboard", style={"textAlign": "center"}),
+##############################################################
+##################### End of Content Load ####################
+##############################################################
 
-        dcc.Slider(
-            id='q3-top-n-slider',
-            min=dirSliderMin,
-            max=dirSliderMax,  # Dynamically set the maximum value based on number of unique actors
-            step=1,
-            value=5,
-            marks={i: str(i) for i in range(dirSliderMin, dirSliderMax, math.floor((dirSliderMax-dirSliderMin)/10))},  # Adjust marks for more flexibility
-            tooltip={"placement": "bottom", "always_visible": True}
-        ),
-        html.H2("Profitability vs Worldwide Gross per Director"),
-        dcc.Graph(id='directors-profitability-graph'),
-
-        html.H2("Top Directors by Award Count"),
-        html.Div([
-            html.Label("Filter by Award Outcome:"),
-            dcc.Dropdown(
-                id="award-type-dropdown",
-                options=[
-                    {"label": "All", "value": "all"},
-                    {"label": "Wins Only", "value": "wins"},
-                    {"label": "Nominations Only", "value": "nominations"},
-                ],
-                value="all",
-                clearable=False,
-                style={"width": "300px"}
-            )
-        ]),
-        dcc.Graph(id='top-awarded-directors'),
-
-        html.H2("Roles by Award Director Category"),
-        html.Div([
-            html.Label("Select Award Director Category:"),
-            dcc.Dropdown(
-                id="award-category-dropdown",
-                options=[
-                    {"label": category, "value": category}
-                    for category, count in (
-                        moviesDataDirectors
-                        .assign(award_categories=lambda df: df["award_categories"].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else []))
-                        .explode("award_categories")
-                        .dropna(subset=["award_categories"])
-                        .query("award_categories.str.contains('director', case=False)", engine='python')
-                        .groupby("award_categories")["director_name"]
-                        .nunique()
-                        .items()
-                    ) if count > 3
-                ],
-                placeholder="Choose a director-related award...",
-                style={"width": "400px"}
-            ),
-            dcc.Graph(id="roles-stacked-bar")
-        ]),
-
-        html.H2("IMDb Rating vs Metascore per Director"),
-        dcc.Graph(id='ratings-vs-metascore')
-    ])
-    return app.layout
-
-
-def createQ4Content():
-    theSliderMin = 1
-    theSliderMax = len(set([actor for movie in moviesDataQ2 for actor in movie["actors"]]))
-
-    return html.Div([
-        html.H1("Actors' Profitability"),
-
-        # Slider to select number of top actors
-        dcc.Slider(
-            id='q4-top-n-slider',
-            min=theSliderMin,
-            max=theSliderMax,  # Dynamically set the maximum value based on number of unique actors
-            step=1,
-            value=5,
-            marks={i: str(i) for i in range(theSliderMin, theSliderMax, math.floor((theSliderMax-theSliderMin)/10))},  # Adjust marks for more flexibility
-            tooltip={"placement": "bottom", "always_visible": True}
-        ),
-
-        # Plotly graph
-        dcc.Graph(id='actors-profitability-graph')
-    ])
-
-
-# Function to generate a simplified 2x2 view for Q1-Q4 placeholders
-def createOverview():
-    return html.Div([
-        dbc.Row([
-            dbc.Col(createQ1Content(), width=6),
-            dbc.Col(createQ2Content(), width=6),
-        ]),
-        dbc.Row([
-            dbc.Col(html.Div([
-                html.H3("Top Directors by Profitability (Bubble Chart)"),
-                dcc.Graph(figure=createDirectorsProfitabilityBubble(topN=5))
-            ]), width=6),
-            dbc.Col(createQ4Content(), width=6),
-        ]),
-    ])
-
+##############################################################
+#################### Functions used in Q1 ####################
+##############################################################
 
 # Generate Force Directed Graph
 def generateForceDirectedGraph() -> Tuple[go.Scatter, go.Scatter, nx.Graph]:
@@ -428,10 +302,46 @@ def generateForceDirectedGraph() -> Tuple[go.Scatter, go.Scatter, nx.Graph]:
     )
     return edgeTrace, nodeTrace, G
 
+##############################################################
+################ End of Functions used in Q1 #################
+##############################################################
+
+##############################################################
+#################### Functions used in Q2 ####################
+##############################################################
+
+# Prepare data for interactive chart
+analysis_df = movies_df.copy()
+analysis_df = analysis_df.dropna(subset=['award_count', 'worldwideGross_M', 'imdbRating'])
+
+pd.set_option('display.max_columns', None)
+
+# Group by number of awards
+awards_grouped = analysis_df.groupby('award_count').agg({
+    'worldwideGross_M': ['mean', 'median', 'count'],
+    'imdbRating': ['mean', 'count']
+}).reset_index()
+
+# Flatten column structure
+awards_grouped.columns = ['_'.join(col).strip('_') for col in awards_grouped.columns.values]
+
+# Rename columns for clarity
+awards_grouped = awards_grouped.rename(columns={
+    'award_count': 'num_awards',
+    'worldwideGross_M_mean': 'mean_box_office',
+    'worldwideGross_M_median': 'median_box_office',
+    'worldwideGross_M_count': 'movie_count',
+    'imdbRating_mean': 'average_rating'
+})
+
+##############################################################
+################ End of Functions used in Q2 #################
+##############################################################
 
 ##############################################################
 #################### Functions used in Q3 ####################
 ##############################################################
+
 def clean_money_column(series):
     """
     Cleans a pandas Series containing monetary values by removing dollar signs and commas.
@@ -844,42 +754,404 @@ def createRolesByAwardCategory(selected_award: str = "Best Director of the Year"
         template="plotly_white"
     )
     return fig
+
 ##############################################################
 ################ End of Functions used in Q3 #################
 ##############################################################
 
+##############################################################
+#################### Functions used in Q4 ####################
+##############################################################
 
-def createActorsProfitability(top_n=5):
-    actors_profitability = {}
-    for movie in moviesDataQ2:
+# Transform data to a DataFrame for flexibility
+def get_actor_profitability_df(country_filter="All"):
+    records = []
+    for movie in movies_data_q4_json:
+        if country_filter != "All" and movie["country"] != country_filter:
+            continue
         for actor in movie["actors"]:
             profitability = 100 * (movie["grossing"] / movie["budget"] - 1)
-            if actor not in actors_profitability:
-                actors_profitability[actor] = []
-            actors_profitability[actor].append(profitability)
+            records.append(
+                {
+                    "actor": actor,
+                    "profitability": profitability,
+                    "title": movie["title"],
+                    "country": movie["country"],
+                }
+            )
+    return pd.DataFrame(records)
 
-    actor_names = list(actors_profitability.keys())
-    average_profitability = [sum(profit) / len(profit) for profit in actors_profitability.values()]
 
-    # Sort by profitability in descending order
-    sorted_actors = sorted(zip(actor_names, average_profitability), key=lambda x: x[1], reverse=True)
-
-    # Extract top N actors
-    top_actors = sorted_actors[:top_n]
-    top_actor_names = [actor for actor, _ in top_actors]
-    top_actor_profitability = [profit for _, profit in top_actors]
-
-    # Create bar plot for the top actors
-    fig = go.Figure([go.Bar(x=top_actor_names, y=top_actor_profitability)])
+# Visual 1: Top N Actors by Average Profitability
+def plot_top_actors_profitability(topN, country):
+    df = get_actor_profitability_df(country)
+    top_avg = (
+        df.groupby("actor")["profitability"]
+        .mean()
+        .sort_values(ascending=False)
+        .head(topN)
+    )
+    fig = go.Figure(go.Bar(x=top_avg.index, y=top_avg.values))
     fig.update_layout(
-        title="Top Actors by Profitability",
+        title="Top Actors by Average Profitability",
         xaxis_title="Actor",
-        yaxis_title="Profitability (%)",
-        showlegend=False
+        yaxis_title="Profitability",
+    )
+    return fig
+
+
+# Visual 2: Bottom N Actors by Profitability
+def plot_bottom_actors_profitability(topN, country):
+    df = get_actor_profitability_df(country)
+
+    # Compute average profitability per actor
+    avg_profit = df.groupby("actor")["profitability"].mean()
+
+    # Filter only actors with negative profitability
+    negative_profit_actors = avg_profit[avg_profit < 0].sort_values().head(topN)
+
+    if negative_profit_actors.empty:
+        fig = go.Figure()
+        fig.update_layout(
+            title="No Actors with Negative Profitability Found",
+            xaxis_title="Actor",
+            yaxis_title="Profitability",
+        )
+    else:
+        fig = go.Figure(
+            go.Bar(x=negative_profit_actors.index, y=negative_profit_actors.values)
+        )
+        fig.update_layout(
+            title="Bottom Actors by Negative Profitability",
+            xaxis_title="Actor",
+            yaxis_title="Profitability",
+        )
+    return fig
+
+
+# Visual 3: Profitability Distribution Histogram
+def plot_profitability_distribution(country):
+    df = get_actor_profitability_df(country)
+    x = df["profitability"].dropna()
+
+    # Histogram
+    fig = px.histogram(
+        df, x="profitability", nbins=50, histnorm="probability density", opacity=0.6
+    )
+
+    # KDE line
+    kde = gaussian_kde(x)
+    x_range = np.linspace(x.min(), x.max(), 500)
+    kde_values = kde(x_range)
+    fig.add_trace(
+        go.Scatter(
+            x=x_range, y=kde_values, mode="lines", name="KDE", line=dict(color="red")
+        )
+    )
+
+    fig.update_layout(
+        title="Distribution of Actor Profitabilities with KDE",
+        xaxis_title="Profitability",
+        yaxis_title="Density",
+        legend=dict(x=0.7, y=0.95),
     )
 
     return fig
 
+##############################################################
+################ End of Functions used in Q4 #################
+##############################################################
+
+##############################################################
+################# Initial Visual Representation ##############
+##############################################################
+
+# Define the app layout
+app.layout = html.Div(
+    children=[
+        html.H1("Visual Analytics Dashboard", style={'textAlign': 'center'}),
+        html.Div(
+            children=[
+                html.Button("Overview", id="btn-overview", n_clicks=0, className="btn"),
+                html.Button("Q1", id="btn-q1", n_clicks=0, className="btn"),
+                html.Button("Q2", id="btn-q2", n_clicks=0, className="btn"),
+                html.Button("Q3", id="btn-q3", n_clicks=0, className="btn"),
+                html.Button("Q4", id="btn-q4", n_clicks=0, className="btn"),
+            ],
+            style={'display': 'flex', 'justify-content': 'space-between', 'margin-bottom': '20px'}
+        ),
+        html.Div(id="page-content"),
+    ]
+)
+
+def createQ1Content():
+    forceGraphID = "force-directed-graph"
+    forceGraphTitle = "Director-Actor Connections"
+
+    return html.Div([
+        html.H1(forceGraphTitle),
+        dcc.Graph(
+            id=forceGraphID,
+            figure={
+                'data': [],
+                'layout': go.Layout(
+                    title=forceGraphTitle,
+                    hovermode="closest",
+                    showlegend=False,
+                    xaxis=dict(showgrid=False, zeroline=False),
+                    yaxis=dict(showgrid=False, zeroline=False),
+                    margin=dict(l=0, r=0, b=0, t=0)
+                )
+            },
+            style={"width": "100%", "height": "600px"}
+        ),
+
+        # Popover for node click
+        dbc.Popover(
+            [
+                dbc.PopoverHeader(id="popover-header"),
+                dbc.PopoverBody(id="popover-body")
+            ],
+            id="popover",
+            is_open=False,
+            target=forceGraphID,
+            placement="top-start",
+        ),
+    ])
+
+def createQ2ControlPanel():
+    return html.Div([
+        html.Div([
+            html.Label("Filter by Number of Awards:", style={'color': 'white', 'marginRight': '10px'}),
+            dcc.RangeSlider(
+                id='awards-slider',
+                min=0,
+                max=int(awards_grouped['num_awards'].max()),
+                step=1,
+                marks={i: str(i) for i in range(0, int(awards_grouped['num_awards'].max()) + 1, 1)},
+                value=[0, min(5, int(awards_grouped['num_awards'].max()))],  # Default to 0-5 awards or max if less
+                tooltip={"placement": "bottom", "always_visible": True}
+            ),
+        ], style={'width': '70%', 'display': 'inline-block', 'padding': '20px'}),
+        
+        html.Div([
+            html.Label("Box Office Metric:", style={'color': 'white', 'marginRight': '10px'}),
+            dcc.RadioItems(
+                id='metric-selector',
+                options=[
+                    {'label': ' Mean', 'value': 'mean_box_office'},
+                    {'label': ' Median', 'value': 'median_box_office'}
+                ],
+                value='mean_box_office',
+                labelStyle={'display': 'block', 'color': 'white'}
+            )
+        ], style={'width': '20%', 'display': 'inline-block', 'padding': '20px', 'verticalAlign': 'top'})
+    ], style={'backgroundColor': '#1E1E1E', 'borderRadius': '10px', 'padding': '10px', 'margin': '10px 0'})
+
+
+def createQ2Content():
+    return html.Div([
+    html.H1("Awards vs Box Office Analysis", style={'textAlign': 'center', 'color': 'white', 'marginBottom': '20px'}),
+    
+    # Control panel
+    createQ2ControlPanel(),
+    
+    # Charts
+    html.Div([
+        dcc.Loading(
+            id="loading-graphs",
+            children=[
+                dcc.Graph(id='award-boxoffice-graph', style={'height': '400px'}),
+                html.Div([
+                    dcc.Graph(id='filtered-movies-graph', style={'height': '500px'})
+                ], style={'marginTop': '20px'})
+            ],
+            type="circle",
+            color="#00ff00"
+        )
+    ])
+], style={'backgroundColor': 'black', 'padding': '20px', 'fontFamily': 'Arial'})
+
+def createQ3Content():
+    dirSliderMin = 1
+    dirSliderMax = 100
+
+    app.layout = html.Div([
+        html.H1("Directors Dashboard", style={"textAlign": "center"}),
+
+        dcc.Slider(
+            id='q3-top-n-slider',
+            min=dirSliderMin,
+            max=dirSliderMax,  # Dynamically set the maximum value based on number of unique actors
+            step=1,
+            value=5,
+            marks={i: str(i) for i in range(dirSliderMin, dirSliderMax, math.floor((dirSliderMax-dirSliderMin)/10))},  # Adjust marks for more flexibility
+            tooltip={"placement": "bottom", "always_visible": True}
+        ),
+        html.H2("Profitability vs Worldwide Gross per Director"),
+        dcc.Graph(id='directors-profitability-graph'),
+
+        html.H2("Top Directors by Award Count"),
+        html.Div([
+            html.Label("Filter by Award Outcome:"),
+            dcc.Dropdown(
+                id="award-type-dropdown",
+                options=[
+                    {"label": "All", "value": "all"},
+                    {"label": "Wins Only", "value": "wins"},
+                    {"label": "Nominations Only", "value": "nominations"},
+                ],
+                value="all",
+                clearable=False,
+                style={"width": "300px"}
+            )
+        ]),
+        dcc.Graph(id='top-awarded-directors'),
+
+        html.H2("Roles by Award Director Category"),
+        html.Div([
+            html.Label("Select Award Director Category:"),
+            dcc.Dropdown(
+                id="award-category-dropdown",
+                options=[
+                    {"label": category, "value": category}
+                    for category, count in (
+                        moviesDataDirectors
+                        .assign(award_categories=lambda df: df["award_categories"].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else []))
+                        .explode("award_categories")
+                        .dropna(subset=["award_categories"])
+                        .query("award_categories.str.contains('director', case=False)", engine='python')
+                        .groupby("award_categories")["director_name"]
+                        .nunique()
+                        .items()
+                    ) if count > 3
+                ],
+                placeholder="Choose a director-related award...",
+                style={"width": "400px"}
+            ),
+            dcc.Graph(id="roles-stacked-bar")
+        ]),
+
+        html.H2("IMDb Rating vs Metascore per Director"),
+        dcc.Graph(id='ratings-vs-metascore')
+    ])
+    return app.layout
+
+
+def createQ4Content():
+    # Begin of layout settings
+    theSliderMin = 1
+    theSliderMax = 90
+
+    return html.Div(
+    [
+        html.H1("Actors Profitability Analysis"),
+        html.Div(
+            [
+                html.Div(
+                    [
+                        html.Label("Select Visualization Type:"),
+                        dcc.Dropdown(
+                            id="viz-type",
+                            options=[
+                                {
+                                    "label": "Top N Actors by Profitability",
+                                    "value": "top",
+                                },
+                                {
+                                    "label": "Bottom N Actors by Profitability",
+                                    "value": "bottom",
+                                },
+                                {
+                                    "label": "Profitability Distribution",
+                                    "value": "hist",
+                                },
+                            ],
+                            value="top",
+                            clearable=False,
+                            style={"width": "100%"},
+                        ),
+                    ],
+                    style={"flex": "1", "margin-right": "10px"},
+                ),
+                html.Div(
+                    [
+                        html.Label("Filter by Country:"),
+                        dcc.Dropdown(
+                            id="country-dropdown",
+                            options=[{"label": "All Countries", "value": "All"}]
+                            + [
+                                {"label": country, "value": country}
+                                for country in sorted(
+                                    set(movie["country"] for movie in movies_data_q4_json)
+                                )
+                            ],
+                            value="All",
+                            clearable=False,
+                            style={"width": "100%"},
+                        ),
+                    ],
+                    style={"flex": "1", "margin-left": "10px"},
+                ),
+            ],
+            style={
+                "display": "flex",
+                "width": "100%",
+                "justify-content": "space-between",
+            },
+        ),
+        html.Br(),
+        # Wrap slider in a container div
+        html.Div(
+            id="slider-container",
+            children=[
+                dcc.Slider(
+                    id="top-n-slider",
+                    min=1,
+                    max=theSliderMax,
+                    step=1,
+                    value=10,
+                    marks={
+                        i: str(i)
+                        for i in range(
+                            theSliderMin,
+                            theSliderMax,
+                            max(1, math.floor((theSliderMax - theSliderMin) // 10)),
+                        )
+                    },
+                    tooltip={"placement": "bottom", "always_visible": True},
+                )
+            ],
+        ),
+        html.Br(),
+        dcc.Graph(id="profitability-graph"),
+    ]
+)
+
+
+# Function to generate a simplified 2x2 view for Q1-Q4 placeholders
+def createOverview():
+    return html.Div([
+        dbc.Row([
+            dbc.Col(createQ1Content(), width=6),
+            dbc.Col(createQ2Content(), width=6),
+        ]),
+        dbc.Row([
+            dbc.Col(html.Div([
+                html.H3("Top Directors by Profitability (Bubble Chart)"),
+                dcc.Graph(figure=createDirectorsProfitabilityBubble(topN=5))
+            ]), width=6),
+            dbc.Col(createQ4Content(), width=6),
+        ]),
+    ])
+
+##############################################################
+############# End of Initial Visual Representation ###########
+##############################################################
+
+##############################################################
+###################### Callbacks for Q1 ######################
+##############################################################
 
 @app.callback(
     [
@@ -961,14 +1233,218 @@ def updateGraphAndPopover(clickData: Dict) -> Tuple[Dict, bool, str, str, Dict]:
         ),
     }, is_open, header, body, header_style
 
+##############################################################
+################## End of Callbacks for Q1 ###################
+##############################################################
+
+##############################################################
+###################### Callbacks for Q2 ######################
+##############################################################
 
 @app.callback(
-    Output('actors-profitability-graph', 'figure'),
-    [Input('q4-top-n-slider', 'value')]
+    [Output('award-boxoffice-graph', 'figure'),
+     Output('filtered-movies-graph', 'figure')],
+    [Input('awards-slider', 'value'),
+     Input('metric-selector', 'value')]
 )
-def updateQ4Graph(top_n):
-    fig = createActorsProfitability(top_n)
-    return fig
+def update_graphs(awards_range, metric):
+    # Filter data by selected range
+    filtered_data = awards_grouped[
+        (awards_grouped['num_awards'] >= awards_range[0]) & 
+        (awards_grouped['num_awards'] <= awards_range[1])
+    ]
+    
+    # Filter individual movies for the second chart
+    filtered_movies = analysis_df[
+        (analysis_df['award_count'] >= awards_range[0]) & 
+        (analysis_df['award_count'] <= awards_range[1])
+    ]
+    
+    # Create hover labels
+    hover_text = [
+        f"Awards: {row['num_awards']}<br>" +
+        f"Mean Box Office: ${row['mean_box_office']:.1f}M<br>" +
+        f"Median Box Office: ${row['median_box_office']:.1f}M<br>" + 
+        f"IMDb Rating: {row['average_rating']:.1f}<br>" + 
+        f"Number of Movies: {row['movie_count']}"
+        for _, row in filtered_data.iterrows()
+    ]
+    
+    # 1. Bar chart with trend line
+    bar_fig = make_subplots(specs=[[{"secondary_y": True}]])
+    
+    # Bars for box office
+    bar_fig.add_trace(
+        go.Bar(
+            x=filtered_data['num_awards'],
+            y=filtered_data[metric],
+            text=filtered_data['movie_count'],
+            textposition='auto',
+            hovertext=hover_text,
+            hoverinfo='text',
+            marker=dict(
+                color='rgba(50, 171, 96, 0.7)',
+                line=dict(
+                    color='rgba(50, 171, 96, 1.0)',
+                    width=2
+                )
+            ),
+            name='Box Office'
+        )
+    )
+    
+    # Line for rating
+    bar_fig.add_trace(
+        go.Scatter(
+            x=filtered_data['num_awards'],
+            y=filtered_data['average_rating'],
+            mode='lines+markers',
+            marker=dict(
+                size=8,
+                color='rgba(220, 57, 18, 0.8)',
+                line=dict(
+                    color='rgba(220, 57, 18, 1.0)',
+                    width=1
+                )
+            ),
+            line=dict(
+                color='rgba(220, 57, 18, 0.8)',
+                width=3
+            ),
+            name='IMDb Rating',
+        ),
+        secondary_y=True
+    )
+    
+    # Update layout of first chart
+    metric_title = "Mean" if metric == 'mean_box_office' else "Median"
+    
+    bar_fig.update_layout(
+        title=f'{metric_title} Box Office and Rating by Number of Awards',
+        template='plotly_dark',
+        plot_bgcolor='rgba(30, 30, 30, 1)',
+        paper_bgcolor='rgba(30, 30, 30, 1)',
+        barmode='group',
+        bargap=0.2,
+        bargroupgap=0.1,
+        legend=dict(
+            x=0.01,
+            y=0.99,
+            bgcolor='rgba(0, 0, 0, 0.5)',
+            bordercolor='rgba(255, 255, 255, 0.2)',
+            borderwidth=1
+        ),
+        hovermode='closest'
+    )
+    
+    # Update axes
+    bar_fig.update_xaxes(
+        title='Number of Awards',
+        tickvals=filtered_data['num_awards'],
+        gridcolor='rgba(255, 255, 255, 0.1)'
+    )
+    
+    bar_fig.update_yaxes(
+        title='Box Office (Millions $)',
+        tickformat='$,.0f',
+        gridcolor='rgba(255, 255, 255, 0.1)',
+        secondary_y=False
+    )
+    
+    bar_fig.update_yaxes(
+        title='IMDb Rating',
+        range=[min(filtered_data['average_rating']) - 0.5, max(filtered_data['average_rating']) + 0.5],
+        tickformat='.1f',
+        gridcolor='rgba(255, 255, 255, 0.1)',
+        secondary_y=True
+    )
+    
+    # 2. Filtered movies chart
+    # Sort to highlight the most relevant
+    if metric == 'mean_box_office':
+        filtered_movies = filtered_movies.sort_values(by=['worldwideGross_M'], ascending=False)
+    else:
+       filtered_movies['combined_score'] = filtered_movies['worldwideGross_M'] * filtered_movies['imdbRating'] / 10
+       filtered_movies = filtered_movies.sort_values(by=['combined_score'], ascending=False)
+
+    # Limit to a manageable number of movies
+    top_movies = filtered_movies.head(100)
+
+    # Create scatter plot of movies
+    movie_fig = go.Figure()
+
+    # Group by region for color consistency
+    for region in top_movies['region'].unique():
+        region_movies = top_movies[top_movies['region'] == region]
+    
+        movie_fig.add_trace(go.Scatter(
+            x=region_movies['imdbRating'],
+            y=region_movies['worldwideGross_M'],
+            mode='markers',
+            marker=dict(
+                size=region_movies['award_count'].apply(
+                lambda x: np.interp(x, [0, analysis_df['award_count'].max()], [8, 30])  # Escala mejor
+                ),
+               color={
+                    'USA': 'rgb(255, 215, 0)',        # amarillo
+                    'UK': 'rgb(30, 144, 255)',        # azul
+                    'Spain': 'rgb(220, 20, 60)',      # rojo
+                    'Other': 'rgb(100, 100, 100)'     # gris
+                }.get(region, 'rgb(100, 100, 100)'),
+                opacity=0.8,
+                line=dict(width=1, color='white')
+            ),
+            name={
+                'USA': 'Estados Unidos',
+                'UK': 'Reino Unido',
+                'Spain': 'España',
+                'Other': 'Otro'
+            }.get(region, region),
+            text=[
+                f"<b>{row['title']}</b><br>" +
+                f"Awards: {int(row['award_count'])}<br>" +
+                f"Rating: {row['imdbRating']}/10<br>" +
+                f"Box Office: ${row['worldwideGross_M']:.1f}M<br>" +
+                f"Country: {row['region']}"
+                for _, row in region_movies.iterrows()
+            ],
+            hoverinfo='text',
+            hoverlabel=dict(bgcolor='rgba(0,0,0,0.8)', font=dict(color='white')),
+        ))
+
+    # Update layout of second chart
+    movie_fig.update_layout(
+        title=f'Movies with {awards_range[0]} to {awards_range[1]} Awards (Showing top {len(top_movies)} of {len(filtered_movies)} movies)',
+        xaxis_title='IMDb Rating',
+        yaxis_title='Box Office (Millions $)',
+        template='plotly_dark',
+        plot_bgcolor='rgba(30, 30, 30, 1)',
+        paper_bgcolor='rgba(30, 30, 30, 1)',
+        legend=dict(
+            title='Region',
+            x=0.01,
+            y=0.99,
+            bgcolor='rgba(0, 0, 0, 0.5)',
+            bordercolor='rgba(255, 255, 255, 0.2)',
+            borderwidth=1
+        ),
+        margin=dict(l=40, r=40, t=50, b=40),
+        hovermode='closest'
+    )
+
+    # Handle log scale for y-axis if the range is large
+    if top_movies['worldwideGross_M'].max() / (top_movies['worldwideGross_M'].min() + 0.1) > 100:
+        movie_fig.update_yaxes(type='log', tickformat='$,.0f')
+    else:
+        movie_fig.update_yaxes(tickformat='$,.0f')
+
+    movie_fig.update_xaxes(range=[min(top_movies['imdbRating']) - 0.5, 10])
+    
+    return bar_fig, movie_fig
+
+##############################################################
+################## End of Callbacks for Q2 ###################
+##############################################################
 
 ##############################################################
 ###################### Callbacks for Q3 ######################
@@ -1012,6 +1488,39 @@ def updateScatterGraph(_):
 ################## End of Callbacks for Q3 ###################
 ##############################################################
 
+##############################################################
+###################### Callbacks for Q4 ######################
+##############################################################
+
+@app.callback(
+    Output("profitability-graph", "figure"),
+    Input("viz-type", "value"),
+    Input("top-n-slider", "value"),
+    Input("country-dropdown", "value"),
+)
+def update_q4_graph(viz_type, topN, selected_country):
+    if viz_type == "top":
+        return plot_top_actors_profitability(topN, selected_country)
+    elif viz_type == "bottom":
+        return plot_bottom_actors_profitability(topN, selected_country)
+    elif viz_type == "hist":
+        return plot_profitability_distribution(selected_country)
+    return go.Figure()
+
+
+@app.callback(Output("slider-container", "style"), Input("viz-type", "value"))
+def toggle_q4_slider_visibility(viz_type):
+    if viz_type == "hist":  # Hide the slider for histogram
+        return {"display": "none"}
+    return {"display": "block"}
+
+##############################################################
+################## End of Callbacks for Q4 ###################
+##############################################################
+
+##############################################################
+####################### App Callbacks ########################
+##############################################################
 
 # Callback to update the page content based on button clicks
 @app.callback(
@@ -1075,6 +1584,9 @@ def highlightButton(overview_clicks, q1_clicks, q2_clicks, q3_clicks, q4_clicks)
 
     return highlightedStyle, defaultStyle, defaultStyle, defaultStyle, defaultStyle
 
+##############################################################
+################### End of App Callbacks #####################
+##############################################################
 
 # Run the app
 if __name__ == "__main__":
