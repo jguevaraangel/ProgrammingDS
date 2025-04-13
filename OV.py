@@ -935,7 +935,7 @@ def create_q1_control_panel() -> html.Div:
     return html.Div([
         html.Div([
             # First child Div (Slider)
-            html.Label("Filter by Number of Actors:"),
+            html.Label("Filter by Number of Movies:"),
             dcc.Slider(
                 id="num-movies-slider-q1",
                 min=1,
