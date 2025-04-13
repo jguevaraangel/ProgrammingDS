@@ -19,7 +19,7 @@ import numpy as np
 # Begin of static mock movie loader
 
 
-def loadMoviesFromCSV(file_path="movies_all_countries.csv"):
+def loadMoviesFromCSV(file_path="outputs/movies_all_countries.csv"):
     df = pd.read_csv(file_path)
     return df
 
