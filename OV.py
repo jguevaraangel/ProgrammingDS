@@ -20,8 +20,10 @@ from scipy.stats import gaussian_kde
 # Initialize the Dash app
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], suppress_callback_exceptions=True)
 
+##############################################################
+######################## Content Load ########################
+##############################################################
 
-# movie loader
 def validate_movie_data(movies_df: pd.DataFrame) -> None:
     """
     Validates that the 'directors' and 'thespians' columns in the DataFrame have the
@@ -927,29 +929,32 @@ app.layout = html.Div(
     ]
 )
 
-def create_q1_content() -> html.Div:
-    force_graph_id = "force-directed-graph"
-    force_graph_title = "Director-Actor Connections"
+def create_q1_control_panel() -> html.Div:
     max_value = len(movies_list_q1)
 
     return html.Div([
-        html.H1(force_graph_title, className="graph-title"),
-
-        # Slider with controlled margin and flex layout
         html.Div([
-            html.Label("Filter by worldwide grossing (in millions of $):", style={'color': 'white', 'marginRight': '10px'}),
+            # First child Div (Slider)
+            html.Label("Filter by Number of Actors:"),
             dcc.Slider(
-                id='num-movies-slider-q1',
+                id="num-movies-slider-q1",
                 min=1,
                 max=max_value,
                 step=1,
-                value=50,  # Default to Top 50 movies
+                value=50,
                 marks={i: str(i) for i in range(1, max_value+1, max(1, math.floor((max_value - 1) / 10)))},
                 tooltip={"placement": "bottom", "always_visible": True},
-                className="slider-style"  # Apply className for styling
-            ),
-        ], className="slider-container"),  # Container for slider, using className
+            )
+        ], style={'width': '100%', 'display': 'inline-block', 'padding': '20px'})
+    ], style={'borderRadius': '10px', 'padding': '10px', 'margin': '10px 0', 'verticalAlign': 'top'})
 
+def create_q1_content() -> html.Div:
+    force_graph_id = "force-directed-graph"
+    force_graph_title = "Director-Actor Connections"
+
+    return html.Div([
+        html.H1(force_graph_title, className="graph-title"),
+        create_q1_control_panel(),
         # Loading component for the graph
         dcc.Loading(
             id="loading-graph",
@@ -989,6 +994,8 @@ def create_q1_content() -> html.Div:
     ], className="main-container")
     
 def create_q2_control_panel() -> html.Div:
+    range_slider_max = int(awards_grouped['num_awards'].max())
+
     return html.Div([
         html.Div([
             html.Label("Filter by Number of Awards:", style={'color': 'white', 'marginRight': '10px'}),
@@ -1000,7 +1007,7 @@ def create_q2_control_panel() -> html.Div:
                 marks={i: str(i) for i in range(0, int(awards_grouped['num_awards'].max()) + 1, 1)},
                 value=[0, min(5, int(awards_grouped['num_awards'].max()))],  # Default to 0-5 awards or max if less
                 tooltip={"placement": "bottom", "always_visible": True}
-            ),
+        ),
         ], style={'width': '70%', 'display': 'inline-block', 'padding': '20px'}),
         
         html.Div([
@@ -1134,21 +1141,14 @@ def create_q4_control_panel() -> html.Div:
         # Outer Div
         html.Div([
             # First child Div (Slider)
-            html.Label("Filter by Number of Actors:", style={'color': 'white', 'marginRight': '10px'}),
+            html.Label("Filter by Number of Actors:"),
             dcc.Slider(
                 id="top-n-slider",
                 min=1,
                 max=the_slider_max,
                 step=1,
                 value=10,
-                marks={
-                    i: str(i)
-                    for i in range(
-                        the_slider_min,
-                        the_slider_max,
-                        max(1, math.floor((the_slider_max - the_slider_min) // 10)),
-                    )
-                },
+                marks={i: str(i) for i in range(the_slider_min, the_slider_max, max(1, math.floor((the_slider_max - the_slider_min) // 10)))},
                 tooltip={"placement": "bottom", "always_visible": True},
             )
         ], style={'width': '70%', 'display': 'inline-block', 'padding': '20px'}),
