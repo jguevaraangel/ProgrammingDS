@@ -372,10 +372,15 @@ def createQ4Content():
 # Function to generate a simplified 2x2 view for Q1-Q4 placeholders
 def createOverview():
     return html.Div([
+        dbc.Card([
+            dbc.CardHeader("Overview Dashboard", className="bg-dark text-white fs-3 text-center")
+        ], className="mb-4", style={"backgroundColor": "#1e1e1e"}),
+
         dbc.Row([
             dbc.Col(createQ1Content(), width=6),
             dbc.Col(createQ2Content(), width=6),
         ]),
+
         dbc.Row([
             dbc.Col(
                 dbc.Card([
