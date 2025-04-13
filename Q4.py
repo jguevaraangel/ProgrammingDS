@@ -4,8 +4,13 @@ import dash
 from dash import dcc
 from dash import html
 from dash.dependencies import Input, Output
+from scipy.stats import gaussian_kde
 import plotly.graph_objects as go
 import math
+import ast
+import re
+import pandas as pd
+import numpy as np
 
 ###############################################################
 # BEGIN OF CODE TO MAKE IT WORK, NOT THE INTEGRATION ZONE YET #
@@ -13,38 +18,60 @@ import math
 
 # Begin of static mock movie loader
 
-def loadMoviesFromCSV():
-    return [
-        {"title": "Movie01", "director": "Director01", "actors": ["Actor01", "Actor02", "Actor03", "Actor04", "Actor05"], "awards": [], "grossing": 25.5, "budget": 10.8},
-        {"title": "Movie02", "director": "Director02", "actors": ["Actor06", "Actor07", "Actor08", "Actor09", "Actor10"], "awards": [], "grossing": 6.0, "budget": 1.0},
-        {"title": "Movie03", "director": "Director03", "actors": ["Actor11", "Actor12", "Actor13", "Actor14", "Actor15"], "awards": [{"country": "UK", "category": "Best Soundtrack"}, {"country": "USA", "category": "Best Soundtrack"}, {"country": "UK", "category": "Best Sound"}, {"country": "USA", "category": "Best Special Effects"}, {"country": "USA", "category": "Best Sound"}, {"country": "USA", "category": "Best Song"}], "grossing": 60.2, "budget": 40.9},
-        {"title": "Movie04", "director": "Director04", "actors": ["Actor16", "Actor17", "Actor18", "Actor19", "Actor20"], "awards": [], "grossing": 1.7, "budget": 1.2},
-        {"title": "Movie05", "director": "Director05", "actors": ["Actor21", "Actor22", "Actor23", "Actor24", "Actor25"], "awards": [], "grossing": 1.5, "budget": 0.8},
-        {"title": "Movie06", "director": "Director06", "actors": ["Actor26", "Actor27", "Actor28", "Actor29", "Actor30"], "awards": [{"country": "Spain", "category": "Best Actor"}, {"country": "Spain", "category": "Best Actress"}, {"country": "Spain", "category": "Best Original Screenplay"}, {"country": "Spain", "category": "Best Film"}, {"country": "Spain", "category": "Best Song"}, {"country": "Spain", "category": "Best Soundtrack"}, {"country": "USA", "category": "Best Foreign Film"}], "grossing": 0.6, "budget": 1.0},
-        {"title": "Movie07", "director": "Director07", "actors": ["Actor31", "Actor32", "Actor33", "Actor34", "Actor35"], "awards": [], "grossing": 3.2, "budget": 2.9},
-        {"title": "Movie08", "director": "Director08", "actors": ["Actor36", "Actor37", "Actor38", "Actor39", "Actor40"], "awards": [{"country": "UK", "category": "Best Actress"}], "grossing": 51.7, "budget": 41.2},
-        {"title": "Movie09", "director": "Director09", "actors": ["Actor41", "Actor42", "Actor43", "Actor44", "Actor45"], "awards": [], "grossing": 2.5, "budget": 1.8},
-        {"title": "Movie10", "director": "Director01", "actors": ["Actor46", "Actor02", "Actor47", "Actor48", "Actor05"], "awards": [], "grossing": 2.0, "budget": 1.0},
-        {"title": "Movie11", "director": "Director10", "actors": ["Actor49", "Actor50", "Actor51", "Actor52", "Actor53"], "awards": [], "grossing": 1.2, "budget": 6.9},
-        {"title": "Movie12", "director": "Director11", "actors": ["Actor54", "Actor55", "Actor56", "Actor57", "Actor58"], "awards": [], "grossing": 11.7, "budget": 9.2},
-        {"title": "Movie13", "director": "Director12", "actors": ["Actor59", "Actor60", "Actor61", "Actor62", "Actor63"], "awards": [], "grossing": 6.5, "budget": 7.8},
-        {"title": "Movie14", "director": "Director13", "actors": ["Actor64", "Actor65", "Actor66", "Actor67", "Actor68"], "awards": [], "grossing": 9.0, "budget": 11.0},
-        {"title": "Movie15", "director": "Director02", "actors": ["Actor69", "Actor06", "Actor70", "Actor71", "Actor01"], "awards": [{"country": "USA", "category": "Best Actress"}, {"country": "USA", "category": "Best Soundtrack"}], "grossing": 21.2, "budget": 20.9},
-        {"title": "Movie16", "director": "Director14", "actors": ["Actor72", "Actor73", "Actor74", "Actor75", "Actor76"], "awards": [], "grossing": 17.7, "budget": 11.2},
-        {"title": "Movie17", "director": "Director15", "actors": ["Actor77", "Actor78", "Actor79", "Actor80", "Actor81"], "awards": [], "grossing": 2.5, "budget": 3.8},
-        {"title": "Movie18", "director": "Director16", "actors": ["Actor82", "Actor83", "Actor84", "Actor85", "Actor86"], "awards": [], "grossing": 2.0, "budget": 1.0},
-        {"title": "Movie19", "director": "Director02", "actors": ["Actor01", "Actor05", "Actor03", "Actor87", "Actor04"], "awards": [], "grossing": 1.2, "budget": 0.9},
-        {"title": "Movie20", "director": "Director04", "actors": ["Actor88", "Actor16", "Actor89", "Actor90", "Actor20"], "awards": [{"country": "UK", "category": "Best Film"}, {"country": "UK", "category": "Best Director"}, {"country": "Spain", "category": "Best European Film"}, {"country": "UK", "category": "Best Actor"}, {"country": "UK", "category": "Best Adapted Screenplay"}, {"country": "UK", "category": "Best Supporting Actress"}], "grossing": 51.7, "budget": 31.2},
-    ]
 
-moviesData = loadMoviesFromCSV()
+def loadMoviesFromCSV(file_path="movies_all_countries.csv"):
+    df = pd.read_csv(file_path)
+    return df
+
+
+def processMovieData(data):
+    data["title"] = data["title"].apply(lambda x: re.sub(r"^\d+\.\s*", "", x))
+    data["budget"] = (
+        data["budget"].str.replace(",", "").str.replace("$", "").astype(float)
+    )
+    data["grossing"] = (
+        data["domesticGross"].str.replace(",", "").str.replace("$", "").astype(float)
+    )
+
+    parsed_thespians = []
+    for thespians_list in data["thespians"]:
+        thespians_list = ast.literal_eval(thespians_list)
+        if len(thespians_list) == 0:
+            parsed_thespians.append([])
+        else:
+            parsed_thespians.append([obj["name"] for obj in thespians_list])
+    data["actors"] = parsed_thespians
+
+    json_list = (
+        data[
+            [
+                "title",
+                "country",
+                "imdbRating",
+                "imdbVotes",
+                "metascore",
+                "budget",
+                "awards",
+                "directors",
+                "actors",
+                "grossing",
+            ]
+        ]
+        .dropna()
+        .to_dict(orient="records")
+    )
+    return json_list
+
+
+rawMoviesData = loadMoviesFromCSV()
+moviesData = processMovieData(rawMoviesData)
 
 # End of static mock movie loader
 
 # Begin of layout settings
-
 theSliderMin = 1
-theSliderMax = len(set([actor for movie in moviesData for actor in movie["actors"]]))
+theSliderMax = 90
+# theSliderMax = len(set([actor for movie in moviesData for actor in movie["actors"]]))
 
 # End of layout settings
 
@@ -62,69 +89,218 @@ app = dash.Dash(__name__)
 
 # Begin of the AUXILIARY FUNCTIONS section
 
-def createActorsProfitability(topN: int = 5) -> go.Figure:
-    actorsProfitability = {}
+from dash import dcc, html, Input, Output
+import plotly.graph_objects as go
+import plotly.express as px
+import pandas as pd
+
+
+# Transform data to a DataFrame for flexibility
+def get_actor_profitability_df(country_filter="All"):
+    records = []
     for movie in moviesData:
+        if country_filter != "All" and movie["country"] != country_filter:
+            continue
         for actor in movie["actors"]:
             profitability = 100 * (movie["grossing"] / movie["budget"] - 1)
-            if actor not in actorsProfitability:
-                actorsProfitability[actor] = []
-            actorsProfitability[actor].append(profitability)
+            records.append(
+                {
+                    "actor": actor,
+                    "profitability": profitability,
+                    "title": movie["title"],
+                    "country": movie["country"],
+                }
+            )
+    return pd.DataFrame(records)
 
-    actorNames = list(actorsProfitability.keys())
-    averageProfitability = [sum(profit) / len(profit) for profit in actorsProfitability.values()]
 
-    # Sort by profitability in descending order
-    sortedActors = sorted(zip(actorNames, averageProfitability), key=lambda x: x[1], reverse=True)
-
-    # Extract top N actors
-    topActors = sortedActors[:topN]
-    topActorNames = [actor for actor, _ in topActors]
-    topActorProfitability = [profit for _, profit in topActors]
-
-    # Create bar plot for the top actors
-    fig = go.Figure([go.Bar(x=topActorNames, y=topActorProfitability)])
+# Visual 1: Top N Actors by Average Profitability
+def plot_top_actors_profitability(topN, country):
+    df = get_actor_profitability_df(country)
+    top_avg = (
+        df.groupby("actor")["profitability"]
+        .mean()
+        .sort_values(ascending=False)
+        .head(topN)
+    )
+    fig = go.Figure(go.Bar(x=top_avg.index, y=top_avg.values))
     fig.update_layout(
-        title="Top Actors by Profitability",
+        title="Top Actors by Average Profitability",
         xaxis_title="Actor",
-        yaxis_title="Profitability (%)",
-        showlegend=False
+        yaxis_title="Profitability",
+    )
+    return fig
+
+
+# Visual 2: Bottom N Actors by Profitability
+def plot_bottom_actors_profitability(topN, country):
+    df = get_actor_profitability_df(country)
+
+    # Compute average profitability per actor
+    avg_profit = df.groupby("actor")["profitability"].mean()
+
+    # Filter only actors with negative profitability
+    negative_profit_actors = avg_profit[avg_profit < 0].sort_values().head(topN)
+
+    if negative_profit_actors.empty:
+        fig = go.Figure()
+        fig.update_layout(
+            title="No Actors with Negative Profitability Found",
+            xaxis_title="Actor",
+            yaxis_title="Profitability",
+        )
+    else:
+        fig = go.Figure(
+            go.Bar(x=negative_profit_actors.index, y=negative_profit_actors.values)
+        )
+        fig.update_layout(
+            title="Bottom Actors by Negative Profitability",
+            xaxis_title="Actor",
+            yaxis_title="Profitability",
+        )
+    return fig
+
+
+# Visual 3: Profitability Distribution Histogram
+def plot_profitability_distribution(country):
+    df = get_actor_profitability_df(country)
+    x = df["profitability"].dropna()
+
+    # Histogram
+    fig = px.histogram(
+        df, x="profitability", nbins=50, histnorm="probability density", opacity=0.6
+    )
+
+    # KDE line
+    kde = gaussian_kde(x)
+    x_range = np.linspace(x.min(), x.max(), 500)
+    kde_values = kde(x_range)
+    fig.add_trace(
+        go.Scatter(
+            x=x_range, y=kde_values, mode="lines", name="KDE", line=dict(color="red")
+        )
+    )
+
+    fig.update_layout(
+        title="Distribution of Actor Profitabilities with KDE",
+        xaxis_title="Profitability",
+        yaxis_title="Density",
+        legend=dict(x=0.7, y=0.95),
     )
 
     return fig
 
-# End of the AUXILIARY FUNCTIONS section
 
-# Begin of the LAYOUT section
-app.layout = html.Div([
-    html.H1("Actors' Profitability"),
-        
-    # Slider to select number of top actors
-    dcc.Slider(
-        id='q4-top-n-slider',
-        min=theSliderMin,
-        max=theSliderMax,  # Dynamically set the maximum value based on number of unique actors
-        step=1,
-        value=5,
-        marks={i: str(i) for i in range(theSliderMin, theSliderMax, math.floor((theSliderMax-theSliderMin)/10))},  # Adjust marks for more flexibility
-        tooltip={"placement": "bottom", "always_visible": True}
-    ),
-    
-    # Plotly graph
-    dcc.Graph(id='actors-profitability-graph')
-])
-
-# End of the LAYOUT section
-
-# Begin of the CALLBACK section
-
-@app.callback(
-    Output('actors-profitability-graph', 'figure'),
-    [Input('q4-top-n-slider', 'value')]
+# App Layout
+app.layout = html.Div(
+    [
+        html.H1("Actors Profitability Analysis"),
+        html.Div(
+            [
+                html.Div(
+                    [
+                        html.Label("Select Visualization Type:"),
+                        dcc.Dropdown(
+                            id="viz-type",
+                            options=[
+                                {
+                                    "label": "Top N Actors by Profitability",
+                                    "value": "top",
+                                },
+                                {
+                                    "label": "Bottom N Actors by Profitability",
+                                    "value": "bottom",
+                                },
+                                {
+                                    "label": "Profitability Distribution",
+                                    "value": "hist",
+                                },
+                            ],
+                            value="top",
+                            clearable=False,
+                            style={"width": "100%"},
+                        ),
+                    ],
+                    style={"flex": "1", "margin-right": "10px"},
+                ),
+                html.Div(
+                    [
+                        html.Label("Filter by Country:"),
+                        dcc.Dropdown(
+                            id="country-dropdown",
+                            options=[{"label": "All Countries", "value": "All"}]
+                            + [
+                                {"label": country, "value": country}
+                                for country in sorted(
+                                    set(movie["country"] for movie in moviesData)
+                                )
+                            ],
+                            value="All",
+                            clearable=False,
+                            style={"width": "100%"},
+                        ),
+                    ],
+                    style={"flex": "1", "margin-left": "10px"},
+                ),
+            ],
+            style={
+                "display": "flex",
+                "width": "100%",
+                "justify-content": "space-between",
+            },
+        ),
+        html.Br(),
+        # ✅ Wrap slider in a container div
+        html.Div(
+            id="slider-container",
+            children=[
+                dcc.Slider(
+                    id="top-n-slider",
+                    min=1,
+                    max=theSliderMax,
+                    step=1,
+                    value=10,
+                    marks={
+                        i: str(i)
+                        for i in range(
+                            theSliderMin,
+                            theSliderMax,
+                            max(1, math.floor((theSliderMax - theSliderMin) // 10)),
+                        )
+                    },
+                    tooltip={"placement": "bottom", "always_visible": True},
+                )
+            ],
+        ),
+        html.Br(),
+        dcc.Graph(id="profitability-graph"),
+    ]
 )
-def updateQ4Graph(topN: int) -> go.Figure:
-    fig = createActorsProfitability(topN)
-    return fig
+
+
+# Callback to switch plots
+@app.callback(
+    Output("profitability-graph", "figure"),
+    Input("viz-type", "value"),
+    Input("top-n-slider", "value"),
+    Input("country-dropdown", "value"),
+)
+def update_graph(viz_type, topN, selected_country):
+    if viz_type == "top":
+        return plot_top_actors_profitability(topN, selected_country)
+    elif viz_type == "bottom":
+        return plot_bottom_actors_profitability(topN, selected_country)
+    elif viz_type == "hist":
+        return plot_profitability_distribution(selected_country)
+    return go.Figure()
+
+
+@app.callback(Output("slider-container", "style"), Input("viz-type", "value"))
+def toggle_slider_visibility(viz_type):
+    if viz_type == "hist":  # Hide the slider for histogram
+        return {"display": "none"}
+    return {"display": "block"}
+
 
 # End of the CALLBACK section
 
