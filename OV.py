@@ -929,58 +929,67 @@ app.layout = html.Div(
     ]
 )
 
+# Visualization helper functions
+
+def create_slider(slider_id: str, min_value: int, max_value: int, slider_step: int, default_value: int, slider_type: str) -> dcc.Slider or dcc.RangeSlider:
+    slider_class = dcc.Slider if slider_type == 'slider' else dcc.RangeSlider
+    marks_range_step = max(min_value, math.floor((max_value - 1) / 10)) if max(min_value, math.floor((max_value - 1) / 10)) > 0 else max(min_value, math.ceil((max_value - 1) / 10))
+    return slider_class(
+        id=slider_id,
+        min=min_value,
+        max=max_value,
+        step=slider_step,
+        value=default_value,
+        marks={i: str(i) for i in range(min_value, max_value+1, marks_range_step)},
+        tooltip={"placement": "bottom", "always_visible": True}
+    )
+
+def create_dropdown(dropdown_id: str, dropdown_options: List, default_value: str) -> dcc.Dropdown:
+    return dcc.Dropdown(
+        id=dropdown_id,
+        options=dropdown_options,
+        value=default_value,
+        clearable=False,
+        style={"width": "100%", "max-width": "300px"},
+    )
+
+def create_loading(loading_id: str, *loading_children):
+    return dcc.Loading(
+        id=loading_id,
+        type="circle",
+        color="#00ff00",
+        children=loading_children,
+    )
+
+# question visualization creator functions
+
 def create_q1_control_panel() -> html.Div:
     max_value = len(movies_list_q1)
+    slider_text = "Filter by Number of Movies:"
+    min_value = 1
+    slider_step = 1
+    slider_id = "num-movies-slider-q1"
+    default_value = 50
+    slider_div_style = {'width': '100%', 'display': 'inline-block', 'padding': '20px'}
+    q1_style = {'borderRadius': '10px', 'padding': '10px', 'margin': '10px 0', 'verticalAlign': 'top'}
 
     return html.Div([
         html.Div([
-            # First child Div (Slider)
-            html.Label("Filter by Number of Movies:"),
-            dcc.Slider(
-                id="num-movies-slider-q1",
-                min=1,
-                max=max_value,
-                step=1,
-                value=50,
-                marks={i: str(i) for i in range(1, max_value+1, max(1, math.floor((max_value - 1) / 10)))},
-                tooltip={"placement": "bottom", "always_visible": True},
-            )
-        ], style={'width': '100%', 'display': 'inline-block', 'padding': '20px'})
-    ], style={'borderRadius': '10px', 'padding': '10px', 'margin': '10px 0', 'verticalAlign': 'top'})
+            html.Label(slider_text),
+            create_slider(slider_id, min_value, max_value, slider_step, default_value, 'slider')
+        ], style=slider_div_style
+    )], style=q1_style)
 
 def create_q1_content() -> html.Div:
     force_graph_id = "force-directed-graph"
     force_graph_title = "Director-Actor Connections"
+    force_graph_style = {"width": "100%", "height": "700px", "padding-top": "0px"}
+    loading_id = "loading-graph"
 
     return html.Div([
-        html.H1(force_graph_title, className="graph-title"),
+        html.H1(force_graph_title),
         create_q1_control_panel(),
-        # Loading component for the graph
-        dcc.Loading(
-            id="loading-graph",
-            type="circle",  # Spinner type
-            children=[
-                dcc.Graph(
-                    id=force_graph_id,
-                    figure={
-                        'data': [],
-                        'layout': go.Layout(
-                            title=force_graph_title,
-                            hovermode="closest",
-                            showlegend=False,
-                            xaxis=dict(showgrid=False, zeroline=False),
-                            yaxis=dict(showgrid=False, zeroline=False),
-                            margin=dict(l=0, r=0, b=0, t=0)
-                        )
-                    },
-                    className="graph-container",
-                    style={"width": "100%", "height": "700px", "padding-top": "0px"} 
-                ),
-            ],
-            className="loading-container"  # Apply loading container class
-        ),
-
-        # Popover for node click
+        create_loading(loading_id,dcc.Graph(id=force_graph_id, style=force_graph_style)),
         dbc.Popover(
             [
                 dbc.PopoverHeader(id="popover-header"),
@@ -991,105 +1000,91 @@ def create_q1_content() -> html.Div:
             target=force_graph_id,
             placement="top-start",
         ),
-    ], className="main-container")
+    ])
     
 def create_q2_control_panel() -> html.Div:
-    range_slider_max = int(awards_grouped['num_awards'].max())
+    slider_max = int(awards_grouped['num_awards'].max())
+    slider_min = 0
+    slider_text = "Filter by Number of Awards:"
+    slider_text_style = {'color': 'white', 'marginRight': '10px'}
+    slider_id = 'awards-slider'
+    slider_step = 1
+    slider_value = [slider_min, min(5, slider_max)]
+    slider_div_style = {'width': '70%', 'display': 'inline-block', 'padding': '20px'}
+    metric_id = 'metric-selector'
+    metric_text = "Box Office Metric:"
+    metric_text_style = {'color': 'white', 'marginRight': '10px'}
+    metric_selector_style = {'display': 'block', 'color': 'white'}
+    metric_value = 'mean_box_office'
+    metric_div_style = {'width': '20%', 'display': 'inline-block', 'padding': '20px', 'verticalAlign': 'top'}
+    metric_options = [
+                    {'label': ' Mean', 'value': 'mean_box_office'},
+                    {'label': ' Median', 'value': 'median_box_office'}
+                ]
+    q2_control_style = {'backgroundColor': '#1E1E1E', 'borderRadius': '10px', 'padding': '10px', 'margin': '10px 0'}
 
     return html.Div([
         html.Div([
-            html.Label("Filter by Number of Awards:", style={'color': 'white', 'marginRight': '10px'}),
-            dcc.RangeSlider(
-                id='awards-slider',
-                min=0,
-                max=int(awards_grouped['num_awards'].max()),
-                step=1,
-                marks={i: str(i) for i in range(0, int(awards_grouped['num_awards'].max()) + 1, 1)},
-                value=[0, min(5, int(awards_grouped['num_awards'].max()))],  # Default to 0-5 awards or max if less
-                tooltip={"placement": "bottom", "always_visible": True}
-        ),
-        ], style={'width': '70%', 'display': 'inline-block', 'padding': '20px'}),
-        
+            html.Label(slider_text, style=slider_text_style),
+            create_slider(slider_id, slider_min, slider_max, slider_step, slider_value, 'range'),
+        ], style=slider_div_style),
+
         html.Div([
-            html.Label("Box Office Metric:", style={'color': 'white', 'marginRight': '10px'}),
+            html.Label(metric_text, style=metric_text_style),
             dcc.RadioItems(
-                id='metric-selector',
-                options=[
-                    {'label': ' Mean', 'value': 'mean_box_office'},
-                    {'label': ' Median', 'value': 'median_box_office'}
-                ],
-                value='mean_box_office',
-                labelStyle={'display': 'block', 'color': 'white'}
+                id=metric_id,
+                options=metric_options,
+                value=metric_value,
+                labelStyle=metric_selector_style
             )
-        ], style={'width': '20%', 'display': 'inline-block', 'padding': '20px', 'verticalAlign': 'top'})
-    ], style={'backgroundColor': '#1E1E1E', 'borderRadius': '10px', 'padding': '10px', 'margin': '10px 0'})
+        ], style=metric_div_style)
+    ], style=q2_control_style)
 
 
 def create_q2_content() -> html.Div:
+    heading_text = "Awards vs Box Office Analysis"
+    heading_style = {'textAlign': 'center', 'color': 'white', 'marginBottom': '20px'}
+    loading_id = "loading-graphs"
+    award_graph_id = 'award-boxoffice-graph'
+    award_graph_style = {'height': '400px'}
+    filt_movies_id = 'filtered-movies-graph'
+    filt_movies_style = {'height': '500px'}
+    charts_style = {'marginTop': '20px'}
+    q2_style = {'backgroundColor': 'black', 'padding': '20px', 'fontFamily': 'Arial'}
+
     return html.Div([
-    html.H1("Awards vs Box Office Analysis", style={'textAlign': 'center', 'color': 'white', 'marginBottom': '20px'}),
-    
-    # Control panel
-    create_q2_control_panel(),
-    
-    # Charts
-    html.Div([
-        dcc.Loading(
-            id="loading-graphs",
-            children=[
-                dcc.Graph(id='award-boxoffice-graph', style={'height': '400px'}),
-                html.Div([
-                    dcc.Graph(id='filtered-movies-graph', style={'height': '500px'})
-                ], style={'marginTop': '20px'})
-            ],
-            type="circle",
-            color="#00ff00"
-        )
-    ])
-], style={'backgroundColor': 'black', 'padding': '20px', 'fontFamily': 'Arial'})
+        html.H1(heading_text, style=heading_style),
+        create_q2_control_panel(),
+        html.Div([
+            create_loading(loading_id, dcc.Graph(id=award_graph_id, style=award_graph_style),
+            html.Div([dcc.Graph(id=filt_movies_id, style=filt_movies_style)], style=charts_style))
+        ])
+    ], style=q2_style)
 
 def create_q3_content() -> html.Div:
+    heading_text = "Directors Dashboard"
+    heading_style = style={"textAlign": "center"}
+    subheading_one_text = "Profitability vs Worldwide Gross per Director"
+    subheading_two_text = "Top Directors by Award Count"
+    subheading_three_text = "Roles by Award Director Category"
+    subheading_four_text = "IMDb Rating vs Metascore per Director"
     dir_slider_min = 1
     dir_slider_max = 100
-
-    app.layout = html.Div([
-        html.H1("Directors Dashboard", style={"textAlign": "center"}),
-
-        dcc.Slider(
-            id='q3-top-n-slider',
-            min=dir_slider_min,
-            max=dir_slider_max,  # Dynamically set the maximum value based on number of unique actors
-            step=1,
-            value=5,
-            marks={i: str(i) for i in range(dir_slider_min, dir_slider_max, math.floor((dir_slider_max-dir_slider_min)/10))},  # Adjust marks for more flexibility
-            tooltip={"placement": "bottom", "always_visible": True}
-        ),
-        html.H2("Profitability vs Worldwide Gross per Director"),
-        dcc.Graph(id='directors-profitability-graph'),
-
-        html.H2("Top Directors by Award Count"),
-        html.Div([
-            html.Label("Filter by Award Outcome:"),
-            dcc.Dropdown(
-                id="award-type-dropdown",
-                options=[
+    slider_step = 1
+    slider_value = 5
+    slider_id = "q3-top-n-slider"
+    award_count_id = "award-type-dropdown"
+    award_count_text = "Filter by Award Outcome:"
+    award_count_options = [
                     {"label": "All", "value": "all"},
                     {"label": "Wins Only", "value": "wins"},
                     {"label": "Nominations Only", "value": "nominations"},
-                ],
-                value="all",
-                clearable=False,
-                style={"width": "300px"}
-            )
-        ]),
-        dcc.Graph(id='top-awarded-directors'),
-
-        html.H2("Roles by Award Director Category"),
-        html.Div([
-            html.Label("Select Award Director Category:"),
-            dcc.Dropdown(
-                id="award-category-dropdown",
-                options=[
+                ]
+    award_count_value = "all"
+    director_id = "award-category-dropdown"
+    director_text = "Select Award Director Category:"
+    director_value = "Best Director of the Year"
+    director_options = [
                     {"label": category, "value": category}
                     for category, count in (
                         movies_df_q3
@@ -1101,21 +1096,48 @@ def create_q3_content() -> html.Div:
                         .nunique()
                         .items()
                     ) if count > 3
-                ],
-                placeholder="Choose a director-related award...",
-                style={"width": "400px"}
-            ),
-            dcc.Graph(id="roles-stacked-bar")
+                ]
+    profit_graph_id = 'directors-profitability-graph'
+    director_awards_graph_id = 'top-awarded-directors'
+    roles_graph_id = "roles-stacked-bar"
+    ratings_graph_id = 'ratings-vs-metascore'
+
+    app.layout = html.Div([
+        html.H1(heading_text, heading_style),
+        create_slider(slider_id, dir_slider_min, dir_slider_max, slider_step, slider_value, 'slider'),
+        html.H2(subheading_one_text),
+        dcc.Graph(id=profit_graph_id),
+
+        html.H2(subheading_two_text),
+        html.Div([
+            html.Label(award_count_text),
+            create_dropdown(award_count_id, award_count_options, award_count_value),
+        ]),
+        dcc.Graph(id=director_awards_graph_id),
+
+        html.H2(subheading_three_text),
+        html.Div([
+            html.Label(director_text),
+            create_dropdown(director_id, director_options, director_value),
+            dcc.Graph(id=roles_graph_id)
         ]),
 
-        html.H2("IMDb Rating vs Metascore per Director"),
-        dcc.Graph(id='ratings-vs-metascore')
+        html.H2(subheading_four_text),
+        dcc.Graph(id=ratings_graph_id)
     ])
     return app.layout
 
 def create_q4_control_panel() -> html.Div:
     the_slider_min = 1
     the_slider_max = 90
+    slider_text = "Filter by Number of Actors:"
+    slider_id = "top-n-slider"
+    slider_step = 1
+    slider_value = 10
+    slider_div_style = {'width': '70%', 'display': 'inline-block', 'padding': '20px'}
+    viz_text = "Select Visualization Type:"
+    viz_id = "viz-type"
+    viz_value = "top"
     viz_options = [
         {
             "label": "Top N Actors by Profitability",
@@ -1130,65 +1152,52 @@ def create_q4_control_panel() -> html.Div:
             "value": "hist",
         },
     ]
+    viz_div_style = {"flex": "1", "margin-right": "10px"}
+    country_text = "Filter by Country:"
+    country_id = "country-dropdown"
     country_options = [{"label": "All Countries", "value": "All"}] + [
         {"label": country, "value": country}
         for country in sorted(
             set(movie["country"] for movie in movies_json_q4)
         )
     ]
+    country_div_style = {"flex": "1"}
+    country_value = "All"
+    dropdowns_style = {'width': '20%', 'display': 'inline-block', 'padding': '20px', 'verticalAlign': 'top'}
+    q4_style = {'borderRadius': '10px', 'padding': '10px', 'margin': '10px 0', 'verticalAlign': 'top'}
 
     return html.Div([
-        # Outer Div
         html.Div([
-            # First child Div (Slider)
-            html.Label("Filter by Number of Actors:"),
-            dcc.Slider(
-                id="top-n-slider",
-                min=1,
-                max=the_slider_max,
-                step=1,
-                value=10,
-                marks={i: str(i) for i in range(the_slider_min, the_slider_max, max(1, math.floor((the_slider_max - the_slider_min) // 10)))},
-                tooltip={"placement": "bottom", "always_visible": True},
-            )
-        ], style={'width': '70%', 'display': 'inline-block', 'padding': '20px'}),
+            html.Label(slider_text),
+            create_slider(slider_id, the_slider_min, the_slider_max, slider_step, slider_value, 'slider'),
+        ], style=slider_div_style),
         html.Div(
             [
                 html.Div(
                     [
-                        html.Label("Select Visualization Type:"),
-                        dcc.Dropdown(
-                            id="viz-type",
-                            options=viz_options,
-                            value="top",
-                            clearable=False,
-                            style={"width": "100%"},
-                        ),
+                        html.Label(viz_text),
+                        create_dropdown(viz_id, viz_options, viz_value),
                     ],
-                    style={"flex": "1", "margin-right": "10px"},
+                    style=viz_div_style,
                 ),
                 html.Div(
                     [
-                        html.Label("Filter by Country:"),
-                        dcc.Dropdown(
-                        id="country-dropdown",
-                        options=country_options,
-                        value="All",
-                        clearable=False,
-                        style={"width": "100%"},
-                        ),
+                        html.Label(country_text),
+                        create_dropdown(country_id, country_options, country_value),
                     ],
-                    style={"flex": "1"},
+                    style=country_div_style,
                 ),
-        ], style={'width': '20%', 'display': 'inline-block', 'padding': '20px', 'verticalAlign': 'top'}),
-    ], style={'borderRadius': '10px', 'padding': '10px', 'margin': '10px 0', 'verticalAlign': 'top'})
+        ], style=dropdowns_style),
+    ], style=q4_style)
 
 def create_q4_content() -> html.Div:
+    heading_text = "Actors Profitability Analysis"
+    graph_id = "profitability-graph"
     return html.Div(
         [
-            html.H1("Actors Profitability Analysis"),
+            html.H1(heading_text),
             create_q4_control_panel(),
-            dcc.Graph(id="profitability-graph"),
+            dcc.Graph(id=graph_id),
         ]
     )
 
@@ -1226,13 +1235,13 @@ def create_overview() -> html.Div:
         Output("popover-header", "style"),
     ],
     [
-        Input('force-directed-graph', 'click_data'),
+        Input('force-directed-graph', 'clickData'),
         Input('num-movies-slider-q1', 'value')
     ]
 )
 
 
-def update_graph_and_popover(click_data: Dict, slider_value: int) -> Tuple[Dict, bool, str, str, Dict]:
+def update_graph_and_popover(clickData: Dict, slider_value: int) -> Tuple[Dict, bool, str, str, Dict]:
     """
     Updates the graph and popover based on the click event data.
 
@@ -1245,11 +1254,9 @@ def update_graph_and_popover(click_data: Dict, slider_value: int) -> Tuple[Dict,
              - The popover body content (as Markdown).
              - The header style for the popover.
     """
-
-    # Filter movies_list_q1 based on the slider value (number of top movies to show)
     top_movies = sorted(movies_list_q1, key=lambda x: x['grossing'], reverse=True)[:slider_value]
     
-    # Generate the force-directed graph with the filtered movies list
+    # Generate the force-directed graph
     edge_trace, node_trace, G = generate_force_directed_graph(top_movies)
 
     # Default popover state
@@ -1258,37 +1265,35 @@ def update_graph_and_popover(click_data: Dict, slider_value: int) -> Tuple[Dict,
     body = "Try again later"
     header_style = {'color': 'white', 'backgroundColor': 'red', 'padding': '5px'}
 
-    if click_data:
-        # Assert click_data structure is as expected
-        assert isinstance(click_data, dict), "click_data should be a dictionary."
-        assert 'points' in click_data, "click_data must contain 'points'."
-        assert len(click_data['points']) > 0, "click_data['points'] cannot be empty."
+    if clickData:
+        try:
+            node_tooltip = clickData['points'][0].get('text', None)
+            if node_tooltip:
+                # Regular expression to capture name, type, and IMDb URL
+                pattern = r"(?P<name>.*?)\s\((?P<type>.*?)\)<br><a href='(?P<url>.*?)'>IMDb page</a>"
+                match = re.search(pattern, node_tooltip)
 
-        is_open = True
-        node_tooltip = click_data['points'][0].get('text', None)
-        if node_tooltip:
-            # Regular expression to capture name, type, and IMDb URL
-            pattern = r"(?P<name>.*?)\s\((?P<type>.*?)\)<br><a href='(?P<url>.*?)'>IMDb page</a>"
-            match = re.search(pattern, node_tooltip)
+                if match:
+                    node_name = match.group("name")
+                    node_type = match.group("type")
+                    node_url = match.group("url")
+                    movies_count = G.nodes[node_url]['movies_count']
+                else:
+                    node_name = "Name not found"
+                    node_type = "Profession not found"
+                    node_url = "IMDb URL not found"
+                    movies_count = 0
 
-            if match:
-                node_name = match.group("name")
-                node_type = match.group("type")
-                node_url = match.group("url")
-                movies_count = G.nodes[node_url]['movies_count']
-            else:
-                node_name = "Name not found"
-                node_type = "Profession not found"
-                node_url = "IMDb URL not found"
-                movies_count = 0
-
-            # Set popover content
-            header = f"{node_name} ({node_type})"
-            header_style = {'color': 'white', 'backgroundColor': 'blue', 'padding': '5px'} if node_type == "director" else {'color': 'black', 'backgroundColor': 'orange', 'padding': '5px'}
-            body = dcc.Markdown(f'''
-                Number of movies: {movies_count}
-                [IMDb page]({node_url})
-            ''', link_target="_blank",)
+                # Set popover content
+                header = f"{node_name} ({node_type})"
+                header_style = {'color': 'white', 'backgroundColor': 'blue', 'padding': '5px'} if node_type == "director" else {'color': 'black', 'backgroundColor': 'orange', 'padding': '5px'}
+                body = dcc.Markdown(f'''
+                    Number of movies: {movies_count}
+                    [IMDb page]({node_url})
+                ''', link_target="_blank",)
+                is_open = True
+        except Exception as e:
+            print(f"Error processing click data: {e}")
 
     return {
         'data': [edge_trace, node_trace],
