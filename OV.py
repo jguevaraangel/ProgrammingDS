@@ -22,7 +22,7 @@ app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], suppress_callb
 
 
 # movie loader
-def validateMovieData(moviesDF: pd.DataFrame):
+def validate_movie_data(movies_df: pd.DataFrame) -> None:
     """
     Validates that the 'directors' and 'thespians' columns in the DataFrame have the
     expected format: a list of dictionaries, where each dictionary has 'name' and 'url' keys.
@@ -30,11 +30,15 @@ def validateMovieData(moviesDF: pd.DataFrame):
     :param df: The pandas DataFrame to validate.
     :raises ValueError: If any invalid data is found in the 'directors' or 'thespians' columns.
     """
-    # Check if the columns 'directors' and 'thespians' exist in the dataframe
-    assert 'directors' in moviesDF.columns, "'directors' column is missing."
-    assert 'thespians' in moviesDF.columns, "'thespians' column is missing."
+    # Check if the required columns exist in the dataframe
+    assert 'directors' in movies_df.columns, "'directors' column is missing."
+    assert 'thespians' in movies_df.columns, "'thespians' column is missing."
+    assert 'title' in movies_df.columns, "'title' column is missing."
+    assert 'awards' in movies_df.columns, "'awards' column is missing."
+    assert 'worldwideGross' in movies_df.columns, "'worldwideGross' column is missing."
+    assert 'budget' in movies_df.columns, "'budget' column is missing."
 
-    for index, row in moviesDF.iterrows():
+    for index, row in movies_df.iterrows():
         # Ensure that the 'directors' and 'thespians' are lists of dictionaries
         if isinstance(row['directors'], str):
             # If the column is a string (likely a string representation of a list), try parsing it
@@ -65,24 +69,34 @@ def validateMovieData(moviesDF: pd.DataFrame):
                 raise ValueError(f"Invalid actor data at row {index}: {actor}")
 
 
-def loadMoviesFromCSV(filePath: str) -> Tuple[pd.DataFrame, List[Dict], Dict[str, str]]:
+def load_movies_df_from_csv(file_path: str = 'outputs/movies_all_countries.csv') -> pd.DataFrame:
     """
-    Reads movie data from a CSV file and returns a list of movies and a dictionary
+    Reads movie data from a CSV file and returns a list of movies in a Pandas DataFrame format
+
+    :param file_path: Path to the CSV file. By default, movies_all_countries.csv is loaded
+    :return: A Pandas DataFrame with the movies retrieved from the CSV file
+    """
+    assert isinstance(file_path, str), "The file path must be a string."
+    assert os.path.exists(file_path), f"The file at {file_path} does not exist."
+
+    df = pd.read_csv(file_path)
+    return df
+
+
+def load_movies_from_df_q1(movies_df: pd.DataFrame) -> Tuple[List[Dict], Dict[str, str]]:
+    """
+    Reads movie data from a Pandas DataFrame and returns a list of movies and a dictionary
     mapping IMDb URLs to actor/director names.
 
     :param file_path: Path to the CSV file.
-    :return: A tuple (moviesData, directorsThespiansURLtoNameDict)
+    :return: A tuple (movies_list, directors_thespians_url_to_name_dict)
     """
 
-    assert isinstance(filePath, str), "The file path must be a string."
-    assert os.path.exists(filePath), f"The file at {file_path} does not exist."
+    validate_movie_data(movies_df)
+    movies_list = []
+    directors_thespians_url_to_name_dict = {}
 
-    moviesDF = pd.read_csv(filePath)
-    validateMovieData(moviesDF)
-    moviesData = []
-    directorsThespiansURLtoNameDict = {}
-
-    for _, row in moviesDF.iterrows():
+    for _, row in movies_df.iterrows():
         # Safely parse the string to a list of dictionaries
         directors = ast.literal_eval(row['directors']) if isinstance(row['directors'], str) else row['directors']
         thespians = ast.literal_eval(row['thespians']) if isinstance(row['thespians'], str) else row['thespians']
@@ -95,43 +109,27 @@ def loadMoviesFromCSV(filePath: str) -> Tuple[pd.DataFrame, List[Dict], Dict[str
             'grossing': row['worldwideGross'],
             'budget': row['budget']
         }
-        moviesData.append(movie)
+        movies_list.append(movie)
 
         # Update dictionary mapping URLs to names
         for director in movie['directors']:
-            directorsThespiansURLtoNameDict[director['url']] = director['name']
+            directors_thespians_url_to_name_dict[director['url']] = director['name']
         for actor in movie['actors']:
-            directorsThespiansURLtoNameDict[actor['url']] = actor['name']
+            directors_thespians_url_to_name_dict[actor['url']] = actor['name']
 
-    return moviesDF, moviesData, directorsThespiansURLtoNameDict
+    return movies_list, directors_thespians_url_to_name_dict
 
-
-moviesDF, moviesData, directorsThespiansURLtoNameDict = loadMoviesFromCSV('outputs/movies_all_countries.csv')
-
-
-def loadMoviesFromCSVDirectors():
+def process_movie_data_q2(movies_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Reads director-level movie data from a CSV file and returns it as a pandas DataFrame.
+    Reads movie data from a pandas DataFrame and returns an enriched DataFrame with extra info
+    such as the award count of each movie and parsed/cast info such as numbers (budget and grossing)
+    in string format into numeric format
 
-    The CSV file is expected at the relative path './outputs/Q3/directors_info.csv'. Each row
-    is initially read and converted into a list of dictionaries, then restructured into a DataFrame
-    for further processing and analysis.
-
-    :return: A pandas DataFrame containing the contents of the directors_info.csv file.
+    :param movies_df: the DataFrame retrieved from the CSV
+    :return: the processed DataFrame with new data and converted content
     """
-    directorsInfo = pd.read_csv("./outputs/directors_info.csv")
-    directorsInfo = directorsInfo.to_dict("records")
-    directorsInfo = pd.DataFrame(directorsInfo)
-    return directorsInfo
 
-
-moviesDataDirectors = loadMoviesFromCSVDirectors()
-
-def loadMoviesFromCSVQ2(file_path='outputs/movies_all_countries.csv'):
-    df = pd.read_csv(file_path)
-    return df
-
-def process_movie_data(df):
+    df = movies_df.copy()
     # Clean monetary values
     for col in ['budget', 'domesticGross', 'worldwideGross']:
         df[col] = df[col].str.replace('$', '').str.replace(',', '', regex=False)
@@ -169,13 +167,32 @@ def process_movie_data(df):
 
     return df
 
+def load_movies_from_csv_directors_q3() -> None:
+    """
+    Reads director-level movie data from a CSV file and returns it as a pandas DataFrame.
 
-# Load and process
-raw_movies_df = loadMoviesFromCSVQ2()
-movies_df = raw_movies_df.copy()
-movies_df = process_movie_data(movies_df)
+    The CSV file is expected at the relative path './outputs/directors_info.csv'. Each row
+    is initially read and converted into a list of dictionaries, then restructured into a DataFrame
+    for further processing and analysis.
+
+    :return: A pandas DataFrame containing the contents of the directors_info.csv file.
+    """
+    directors_info = load_movies_df_from_csv("outputs/directors_info.csv")
+    directors_info = directors_info.to_dict("records")
+    directors_info = pd.DataFrame(directors_info)
+    return directors_info
     
-def processMovieDataQ4(data):
+def process_movie_data_q4(movies_df: pd.DataFrame) -> List[Dict]:
+    """
+    Reads movie data from a pandas DataFrame and returns an enriched DataFrame with extra info
+    such as the award count of each movie and parsed/cast info such as numbers (budget and grossing)
+    in string format into numeric format
+
+    :param movies_df: the DataFrame retrieved from the CSV
+    :return: the processed DataFrame contents as a list of dicts
+    """
+
+    data = movies_df.copy()
     data["title"] = data["title"].apply(lambda x: re.sub(r"^\d+\.\s*", "", x))
     data["budget"] = (
         data["budget"].str.replace(",", "").str.replace("$", "").astype(float)
@@ -213,8 +230,14 @@ def processMovieDataQ4(data):
     )
     return json_list
 
-movies_data_q4 = raw_movies_df.copy()
-movies_data_q4_json = processMovieDataQ4(movies_data_q4)
+# Load and process: first, load the CSV, then adapt it to the specs of each question
+
+movies_df = load_movies_df_from_csv()
+
+movies_list_q1, directors_thespians_url_to_name_dict = load_movies_from_df_q1(movies_df)
+movies_df_q2 = process_movie_data_q2(movies_df)
+movies_df_q3 = load_movies_from_csv_directors_q3()
+movies_json_q4 = process_movie_data_q4(movies_df)
 
 ##############################################################
 ##################### End of Content Load ####################
@@ -229,14 +252,14 @@ def generateForceDirectedGraph() -> Tuple[go.Scatter, go.Scatter, nx.Graph]:
     """
     Generates a force-directed graph of directors and actors based on movie data.
 
-    :param moviesData: List of movie data where each movie contains directors and actors information.
-    :param directorsThespiansURLtoNameDict: Dictionary mapping URLs to actor/director names.
+    :param movies_list_q1: List of movie data where each movie contains directors and actors information.
+    :param directors_thespians_url_to_name_dict: Dictionary mapping URLs to actor/director names.
     :return: A tuple containing edge trace, node trace, and the graph object.
     """
 
     G = nx.Graph()
 
-    for movie in moviesData:
+    for movie in movies_list_q1:
         # Iterate over each director in the movie
         for director in movie['directors']:
             directorURL = director['url']
@@ -280,8 +303,8 @@ def generateForceDirectedGraph() -> Tuple[go.Scatter, go.Scatter, nx.Graph]:
         nodeX.append(x)
         nodeY.append(y)
 
-        # Use the directorsThespiansURLtoNameDict to translate URLs to names
-        nodeName = directorsThespiansURLtoNameDict.get(node, node)  # Use URL if not found in the dict
+        # Use the directors_thespians_url_to_name_dict to translate URLs to names
+        nodeName = directors_thespians_url_to_name_dict.get(node, node)  # Use URL if not found in the dict
         nodeText.append(f"{nodeName} ({G.nodes[node]['type']})<br><a href='{node}'>IMDb page</a>")
         nodeColor.append('blue' if G.nodes[node]['type'] == 'director' else 'orange')
 
@@ -311,7 +334,7 @@ def generateForceDirectedGraph() -> Tuple[go.Scatter, go.Scatter, nx.Graph]:
 ##############################################################
 
 # Prepare data for interactive chart
-analysis_df = movies_df.copy()
+analysis_df = movies_df_q2.copy()
 analysis_df = analysis_df.dropna(subset=['award_count', 'worldwideGross_M', 'imdbRating'])
 
 pd.set_option('display.max_columns', None)
@@ -444,7 +467,7 @@ def createDirectorsProfitabilityBubble(topN: int = 5) -> go.Figure:
     :param topN: The number of top directors to include in the chart (default is 5).
     :return: A Plotly Figure object representing the bubble chart.
     """
-    df = moviesDataDirectors.copy()
+    df = movies_df_q3.copy()
 
     df["budget"] = clean_money_column(df["budget"])
     df["worldwideGross"] = clean_money_column(df["worldwideGross"])
@@ -531,7 +554,7 @@ def createTopAwardedDirectorsTreemap(topN=5, award_filter="all") -> go.Figure:
     :param award_filter: The type of award outcome to include: 'wins', 'nominations', or 'all'.
     :return: A Plotly Figure object representing the treemap of top awarded directors.
     """
-    df = moviesDataDirectors.copy()
+    df = movies_df_q3.copy()
 
     df = df[df["award_name"].notna() & (df["award_name"].str.strip() != "")]
     df = df[df["year_result"].notna() & (df["year_result"].str.strip() != "")]
@@ -645,7 +668,7 @@ def createRatingVsMetascoreScatter() -> go.Figure:
 
     :return: A Plotly Figure object containing the scatter plot.
     """
-    df = moviesDataDirectors.copy()
+    df = movies_df_q3.copy()
 
     df["imdbRating"] = df["imdbRating"].astype(str).str.replace(",", ".")
     df["imdbRating"] = pd.to_numeric(df["imdbRating"], errors="coerce")
@@ -711,7 +734,7 @@ def createRolesByAwardCategory(selected_award: str = "Best Director of the Year"
     :return: A Plotly stacked bar chart showing role counts per director for
              the given award category.
     """
-    df = moviesDataDirectors.copy()
+    df = movies_df_q3.copy()
 
     df["participation_categories"] = df["participation_categories"].apply(
         lambda x: ast.literal_eval(x) if isinstance(x, str) else []
@@ -766,7 +789,7 @@ def createRolesByAwardCategory(selected_award: str = "Best Director of the Year"
 # Transform data to a DataFrame for flexibility
 def get_actor_profitability_df(country_filter="All"):
     records = []
-    for movie in movies_data_q4_json:
+    for movie in movies_json_q4:
         if country_filter != "All" and movie["country"] != country_filter:
             continue
         for actor in movie["actors"]:
@@ -1016,7 +1039,7 @@ def createQ3Content():
                 options=[
                     {"label": category, "value": category}
                     for category, count in (
-                        moviesDataDirectors
+                        movies_df_q3
                         .assign(award_categories=lambda df: df["award_categories"].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else []))
                         .explode("award_categories")
                         .dropna(subset=["award_categories"])
@@ -1083,7 +1106,7 @@ def createQ4Content():
                             + [
                                 {"label": country, "value": country}
                                 for country in sorted(
-                                    set(movie["country"] for movie in movies_data_q4_json)
+                                    set(movie["country"] for movie in movies_json_q4)
                                 )
                             ],
                             value="All",
