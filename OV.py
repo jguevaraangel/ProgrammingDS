@@ -177,6 +177,30 @@ def process_movie_data_q2(movies_df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
+def generate_q2_chart_dfs() -> Tuple[pd.DataFrame, pd.DataFrame]:
+    analysis_df = movies_df_q2.copy()
+    analysis_df = analysis_df.dropna(subset=['award_count', 'worldwideGross_M', 'imdbRating'])
+
+    # Group by number of awards
+    awards_df = analysis_df.groupby('award_count').agg({
+        'worldwideGross_M': ['mean', 'median', 'count'],
+        'imdbRating': ['mean', 'count']
+    }).reset_index()
+
+    # Flatten column structure
+    awards_df.columns = ['_'.join(col).strip('_') for col in awards_df.columns.values]
+
+    # Rename columns for clarity
+    awards_df = awards_df.rename(columns={
+        'award_count': 'num_awards',
+        'worldwideGross_M_mean': 'mean_box_office',
+        'worldwideGross_M_median': 'median_box_office',
+        'worldwideGross_M_count': 'movie_count',
+        'imdbRating_mean': 'average_rating'
+    })
+
+    return analysis_df, awards_df
+
 def load_movies_from_csv_directors_q3() -> None:
     """
     Reads director-level movie data from a CSV file and returns it as a pandas DataFrame.
@@ -245,9 +269,17 @@ def process_movie_data_q4(movies_df: pd.DataFrame) -> List[Dict]:
 
 movies_df = load_movies_df_from_csv()
 
+# Prepare data for Q1
 movies_list_q1, directors_thespians_url_to_name_dict = load_movies_from_df_q1(movies_df)
+
+# Prepare data for Q2
 movies_df_q2 = process_movie_data_q2(movies_df)
+analysis_df, awards_grouped = generate_q2_chart_dfs()
+
+# Prepare data for Q3
 movies_df_q3 = load_movies_from_csv_directors_q3()
+
+# Prepare data for Q4
 movies_json_q4 = process_movie_data_q4(movies_df)
 
 ##############################################################
@@ -259,7 +291,7 @@ movies_json_q4 = process_movie_data_q4(movies_df)
 ##############################################################
 
 # Generate Force Directed Graph
-def generateForceDirectedGraph(top_movies: List[Dict]) -> Tuple[go.Scatter, go.Scatter, nx.Graph]:
+def generate_force_directed_graph(top_movies: List[Dict]) -> Tuple[go.Scatter, go.Scatter, nx.Graph]:
     """
     Generates a force-directed graph of directors and actors based on movie data.
 
@@ -275,17 +307,17 @@ def generateForceDirectedGraph(top_movies: List[Dict]) -> Tuple[go.Scatter, go.S
         for director in movie['directors']:
             directorURL = director['url']
             if directorURL not in G:
-                G.add_node(directorURL, type="director", moviesCount=1)
+                G.add_node(directorURL, type="director", movies_count=1)
             else:
-                G.nodes[directorURL]['moviesCount'] += 1  # Increment movie count for the director
+                G.nodes[directorURL]['movies_count'] += 1  # Increment movie count for the director
 
             # Iterate over each actor in the movie
             for actor in movie['actors']:
                 actorURL = actor['url']
                 if actorURL not in G:
-                    G.add_node(actorURL, type="actor", moviesCount=1)
+                    G.add_node(actorURL, type="actor", movies_count=1)
                 else:
-                    G.nodes[actorURL]['moviesCount'] += 1  # Increment movie count for the actor
+                    G.nodes[actorURL]['movies_count'] += 1  # Increment movie count for the actor
 
                 # Add edge between director and actor
                 G.add_edge(directorURL, actorURL)
@@ -301,7 +333,7 @@ def generateForceDirectedGraph(top_movies: List[Dict]) -> Tuple[go.Scatter, go.S
         edgeY.append(y0)
         edgeY.append(y1)
 
-    edgeTrace = go.Scatter(
+    edge_trace = go.Scatter(
         x=edgeX, y=edgeY,
         line=dict(width=0.5, color='#888'),
         hoverinfo='none',
@@ -315,14 +347,14 @@ def generateForceDirectedGraph(top_movies: List[Dict]) -> Tuple[go.Scatter, go.S
         nodeY.append(y)
 
         # Use the directors_thespians_url_to_name_dict to translate URLs to names
-        nodeName = directors_thespians_url_to_name_dict.get(node, node)  # Use URL if not found in the dict
-        nodeText.append(f"{nodeName} ({G.nodes[node]['type']})<br><a href='{node}'>IMDb page</a>")
+        node_name = directors_thespians_url_to_name_dict.get(node, node)  # Use URL if not found in the dict
+        nodeText.append(f"{node_name} ({G.nodes[node]['type']})<br><a href='{node}'>IMDb page</a>")
         nodeColor.append('blue' if G.nodes[node]['type'] == 'director' else 'orange')
 
-        # Vary node size based on the number of movies (moviesCount)
-        nodeSize.append(5 + G.nodes[node]['moviesCount'] * 5)  # Scale size (adjust multiplier if needed)
+        # Vary node size based on the number of movies (movies_count)
+        nodeSize.append(5 + G.nodes[node]['movies_count'] * 5)  # Scale size (adjust multiplier if needed)
 
-    nodeTrace = go.Scatter(
+    node_trace = go.Scatter(
         x=nodeX, y=nodeY,
         mode='markers',
         hoverinfo='text',
@@ -334,10 +366,8 @@ def generateForceDirectedGraph(top_movies: List[Dict]) -> Tuple[go.Scatter, go.S
             color=nodeColor
         )
     )
-    
-    print(f"edge trace: {edgeTrace}")
-    print(f"node trace: {nodeTrace}")
-    return edgeTrace, nodeTrace, G
+
+    return edge_trace, node_trace, G
 
 ##############################################################
 ################ End of Functions used in Q1 #################
@@ -347,30 +377,6 @@ def generateForceDirectedGraph(top_movies: List[Dict]) -> Tuple[go.Scatter, go.S
 #################### Functions used in Q2 ####################
 ##############################################################
 
-# Prepare data for interactive chart
-analysis_df = movies_df_q2.copy()
-analysis_df = analysis_df.dropna(subset=['award_count', 'worldwideGross_M', 'imdbRating'])
-
-pd.set_option('display.max_columns', None)
-
-# Group by number of awards
-awards_grouped = analysis_df.groupby('award_count').agg({
-    'worldwideGross_M': ['mean', 'median', 'count'],
-    'imdbRating': ['mean', 'count']
-}).reset_index()
-
-# Flatten column structure
-awards_grouped.columns = ['_'.join(col).strip('_') for col in awards_grouped.columns.values]
-
-# Rename columns for clarity
-awards_grouped = awards_grouped.rename(columns={
-    'award_count': 'num_awards',
-    'worldwideGross_M_mean': 'mean_box_office',
-    'worldwideGross_M_median': 'median_box_office',
-    'worldwideGross_M_count': 'movie_count',
-    'imdbRating_mean': 'average_rating'
-})
-
 ##############################################################
 ################ End of Functions used in Q2 #################
 ##############################################################
@@ -379,7 +385,7 @@ awards_grouped = awards_grouped.rename(columns={
 #################### Functions used in Q3 ####################
 ##############################################################
 
-def clean_money_column(series):
+def clean_money_column(series: pd.Series) -> pd.Series:
     """
     Cleans a pandas Series containing monetary values by removing dollar signs and commas.
 
@@ -392,7 +398,7 @@ def clean_money_column(series):
     return series.replace("[\$,]", "", regex=True)
 
 
-def normalize_roles(raw_roles):
+def normalize_roles(raw_roles: List[str]) -> List[str]:
     """
     Standardizes role names into a consistent format using a predefined translation map.
 
@@ -470,7 +476,7 @@ def normalize_roles(raw_roles):
     return [translation_map.get(role.lower().strip(), role.lower().strip()) for role in raw_roles]
 
 
-def createDirectorsProfitabilityBubble(topN: int = 5) -> go.Figure:
+def create_directors_profitability_bubble(top_n: int = 5) -> go.Figure:
     """
     Creates a bubble chart showing the top N directors ranked by average profitability.
 
@@ -478,7 +484,7 @@ def createDirectorsProfitabilityBubble(topN: int = 5) -> go.Figure:
     for each movie, and directors are ranked by their average profitability across all their movies.
     Bubble size encodes the number of movies directed, and color encodes the total worldwide gross.
 
-    :param topN: The number of top directors to include in the chart (default is 5).
+    :param top_n: The number of top directors to include in the chart (default is 5).
     :return: A Plotly Figure object representing the bubble chart.
     """
     df = movies_df_q3.copy()
@@ -515,7 +521,7 @@ def createDirectorsProfitabilityBubble(topN: int = 5) -> go.Figure:
         for director, d in directors.items()
     ]
 
-    data = sorted(data, key=lambda x: x[1], reverse=True)[:topN]
+    data = sorted(data, key=lambda x: x[1], reverse=True)[:top_n]
 
     names = [d[0] for d in data]
     profits = [d[1] for d in data]
@@ -546,7 +552,7 @@ def createDirectorsProfitabilityBubble(topN: int = 5) -> go.Figure:
     ))
 
     fig.update_layout(
-        title=f"Top {topN} Directors by Profitability",
+        title=f"Top {top_n} Directors by Profitability",
         xaxis_title="Total Worldwide Gross ($)",
         yaxis_title="Profitability (%)",
         template="plotly_white",
@@ -556,7 +562,7 @@ def createDirectorsProfitabilityBubble(topN: int = 5) -> go.Figure:
     return fig
 
 
-def createTopAwardedDirectorsTreemap(topN=5, award_filter="all") -> go.Figure:
+def create_top_awarded_directors_treemap(top_n=5, award_filter="all") -> go.Figure:
     """
     Generates a treemap visualization of the top N most awarded directors.
 
@@ -564,7 +570,7 @@ def createTopAwardedDirectorsTreemap(topN=5, award_filter="all") -> go.Figure:
     If 'all' is selected, it shows both wins and nominations together, with separate counts.
     Each rectangle in the treemap represents a director, sized by total awards.
 
-    :param topN: The number of top directors to display (default is 5).
+    :param top_n: The number of top directors to display (default is 5).
     :param award_filter: The type of award outcome to include: 'wins', 'nominations', or 'all'.
     :return: A Plotly Figure object representing the treemap of top awarded directors.
     """
@@ -602,7 +608,7 @@ def createTopAwardedDirectorsTreemap(topN=5, award_filter="all") -> go.Figure:
 
         award_counts = df.groupby(["director_name", "award_type"])["award_name"].count().unstack(fill_value=0)
         award_counts["total"] = award_counts.sum(axis=1)
-        award_counts = award_counts.sort_values(by="total", ascending=False).head(topN)
+        award_counts = award_counts.sort_values(by="total", ascending=False).head(top_n)
 
         directors = award_counts.index.tolist()
         values = award_counts["total"].tolist()
@@ -632,7 +638,7 @@ def createTopAwardedDirectorsTreemap(topN=5, award_filter="all") -> go.Figure:
             df.groupby("director_name")["award_name"]
             .count()
             .sort_values(ascending=False)
-            .head(topN)
+            .head(top_n)
         )
 
         if award_counts.empty:
@@ -659,14 +665,14 @@ def createTopAwardedDirectorsTreemap(topN=5, award_filter="all") -> go.Figure:
         ))
 
     fig.update_layout(
-        title=f"Top {topN} ({award_filter.capitalize()})",
+        title=f"Top {top_n} ({award_filter.capitalize()})",
         height=600,
         margin=dict(t=50, l=25, r=25, b=25)
     )
     return fig
 
 
-def createRatingVsMetascoreScatter() -> go.Figure:
+def create_rating_vs_metascore_scatter() -> go.Figure:
     """
     Generates a scatter plot showing the relationship between IMDb rating and Metascore
     for each director, averaged over their directed movies.
@@ -735,7 +741,7 @@ def createRatingVsMetascoreScatter() -> go.Figure:
     return fig
 
 
-def createRolesByAwardCategory(selected_award: str = "Best Director of the Year") -> go.Figure:
+def create_roles_by_award_category(selected_award: str = "Best Director of the Year") -> go.Figure:
     """
     Creates a stacked bar chart showing the roles played by directors in movies that were
     nominated for or won a specific award category.
@@ -801,7 +807,7 @@ def createRolesByAwardCategory(selected_award: str = "Best Director of the Year"
 ##############################################################
 
 # Transform data to a DataFrame for flexibility
-def get_actor_profitability_df(country_filter="All"):
+def get_actor_profitability_df(country_filter: str = "All") -> pd.DataFrame:
     records = []
     for movie in movies_json_q4:
         if country_filter != "All" and movie["country"] != country_filter:
@@ -820,13 +826,13 @@ def get_actor_profitability_df(country_filter="All"):
 
 
 # Visual 1: Top N Actors by Average Profitability
-def plot_top_actors_profitability(topN, country):
+def plot_top_actors_profitability(top_n: int, country: str) -> go.Figure:
     df = get_actor_profitability_df(country)
     top_avg = (
         df.groupby("actor")["profitability"]
         .mean()
         .sort_values(ascending=False)
-        .head(topN)
+        .head(top_n)
     )
     fig = go.Figure(go.Bar(x=top_avg.index, y=top_avg.values))
     fig.update_layout(
@@ -838,14 +844,14 @@ def plot_top_actors_profitability(topN, country):
 
 
 # Visual 2: Bottom N Actors by Profitability
-def plot_bottom_actors_profitability(topN, country):
+def plot_bottom_actors_profitability(top_n: int, country: str) -> go.Figure:
     df = get_actor_profitability_df(country)
 
     # Compute average profitability per actor
     avg_profit = df.groupby("actor")["profitability"].mean()
 
     # Filter only actors with negative profitability
-    negative_profit_actors = avg_profit[avg_profit < 0].sort_values().head(topN)
+    negative_profit_actors = avg_profit[avg_profit < 0].sort_values().head(top_n)
 
     if negative_profit_actors.empty:
         fig = go.Figure()
@@ -867,7 +873,7 @@ def plot_bottom_actors_profitability(topN, country):
 
 
 # Visual 3: Profitability Distribution Histogram
-def plot_profitability_distribution(country):
+def plot_profitability_distribution(country: str) -> go.Figure:
     df = get_actor_profitability_df(country)
     x = df["profitability"].dropna()
 
@@ -921,16 +927,17 @@ app.layout = html.Div(
     ]
 )
 
-def createQ1Content():
-    forceGraphID = "force-directed-graph"
-    forceGraphTitle = "Director-Actor Connections"
+def create_q1_content() -> html.Div:
+    force_graph_id = "force-directed-graph"
+    force_graph_title = "Director-Actor Connections"
     max_value = len(movies_list_q1)
 
     return html.Div([
-        html.H1(forceGraphTitle, className="graph-title"),
+        html.H1(force_graph_title, className="graph-title"),
 
         # Slider with controlled margin and flex layout
         html.Div([
+            html.Label("Filter by worldwide grossing (in millions of $):", style={'color': 'white', 'marginRight': '10px'}),
             dcc.Slider(
                 id='num-movies-slider-q1',
                 min=1,
@@ -949,11 +956,11 @@ def createQ1Content():
             type="circle",  # Spinner type
             children=[
                 dcc.Graph(
-                    id=forceGraphID,
+                    id=force_graph_id,
                     figure={
                         'data': [],
                         'layout': go.Layout(
-                            title=forceGraphTitle,
+                            title=force_graph_title,
                             hovermode="closest",
                             showlegend=False,
                             xaxis=dict(showgrid=False, zeroline=False),
@@ -976,12 +983,12 @@ def createQ1Content():
             ],
             id="popover",
             is_open=False,
-            target=forceGraphID,
+            target=force_graph_id,
             placement="top-start",
         ),
     ], className="main-container")
     
-def createQ2ControlPanel():
+def create_q2_control_panel() -> html.Div:
     return html.Div([
         html.Div([
             html.Label("Filter by Number of Awards:", style={'color': 'white', 'marginRight': '10px'}),
@@ -1011,12 +1018,12 @@ def createQ2ControlPanel():
     ], style={'backgroundColor': '#1E1E1E', 'borderRadius': '10px', 'padding': '10px', 'margin': '10px 0'})
 
 
-def createQ2Content():
+def create_q2_content() -> html.Div:
     return html.Div([
     html.H1("Awards vs Box Office Analysis", style={'textAlign': 'center', 'color': 'white', 'marginBottom': '20px'}),
     
     # Control panel
-    createQ2ControlPanel(),
+    create_q2_control_panel(),
     
     # Charts
     html.Div([
@@ -1034,20 +1041,20 @@ def createQ2Content():
     ])
 ], style={'backgroundColor': 'black', 'padding': '20px', 'fontFamily': 'Arial'})
 
-def createQ3Content():
-    dirSliderMin = 1
-    dirSliderMax = 100
+def create_q3_content() -> html.Div:
+    dir_slider_min = 1
+    dir_slider_max = 100
 
     app.layout = html.Div([
         html.H1("Directors Dashboard", style={"textAlign": "center"}),
 
         dcc.Slider(
             id='q3-top-n-slider',
-            min=dirSliderMin,
-            max=dirSliderMax,  # Dynamically set the maximum value based on number of unique actors
+            min=dir_slider_min,
+            max=dir_slider_max,  # Dynamically set the maximum value based on number of unique actors
             step=1,
             value=5,
-            marks={i: str(i) for i in range(dirSliderMin, dirSliderMax, math.floor((dirSliderMax-dirSliderMin)/10))},  # Adjust marks for more flexibility
+            marks={i: str(i) for i in range(dir_slider_min, dir_slider_max, math.floor((dir_slider_max-dir_slider_min)/10))},  # Adjust marks for more flexibility
             tooltip={"placement": "bottom", "always_visible": True}
         ),
         html.H2("Profitability vs Worldwide Gross per Director"),
@@ -1099,15 +1106,52 @@ def createQ3Content():
     ])
     return app.layout
 
+def create_q4_control_panel() -> html.Div:
+    the_slider_min = 1
+    the_slider_max = 90
+    viz_options = [
+        {
+            "label": "Top N Actors by Profitability",
+            "value": "top",
+        },
+        {
+            "label": "Bottom N Actors by Profitability",
+            "value": "bottom",
+        },
+        {
+            "label": "Profitability Distribution",
+            "value": "hist",
+        },
+    ]
+    country_options = [{"label": "All Countries", "value": "All"}] + [
+        {"label": country, "value": country}
+        for country in sorted(
+            set(movie["country"] for movie in movies_json_q4)
+        )
+    ]
 
-def createQ4Content():
-    # Begin of layout settings
-    theSliderMin = 1
-    theSliderMax = 90
-
-    return html.Div(
-    [
-        html.H1("Actors Profitability Analysis"),
+    return html.Div([
+        # Outer Div
+        html.Div([
+            # First child Div (Slider)
+            html.Label("Filter by Number of Actors:", style={'color': 'white', 'marginRight': '10px'}),
+            dcc.Slider(
+                id="top-n-slider",
+                min=1,
+                max=the_slider_max,
+                step=1,
+                value=10,
+                marks={
+                    i: str(i)
+                    for i in range(
+                        the_slider_min,
+                        the_slider_max,
+                        max(1, math.floor((the_slider_max - the_slider_min) // 10)),
+                    )
+                },
+                tooltip={"placement": "bottom", "always_visible": True},
+            )
+        ], style={'width': '70%', 'display': 'inline-block', 'padding': '20px'}),
         html.Div(
             [
                 html.Div(
@@ -1115,20 +1159,7 @@ def createQ4Content():
                         html.Label("Select Visualization Type:"),
                         dcc.Dropdown(
                             id="viz-type",
-                            options=[
-                                {
-                                    "label": "Top N Actors by Profitability",
-                                    "value": "top",
-                                },
-                                {
-                                    "label": "Bottom N Actors by Profitability",
-                                    "value": "bottom",
-                                },
-                                {
-                                    "label": "Profitability Distribution",
-                                    "value": "hist",
-                                },
-                            ],
+                            options=viz_options,
                             value="top",
                             clearable=False,
                             style={"width": "100%"},
@@ -1140,70 +1171,41 @@ def createQ4Content():
                     [
                         html.Label("Filter by Country:"),
                         dcc.Dropdown(
-                            id="country-dropdown",
-                            options=[{"label": "All Countries", "value": "All"}]
-                            + [
-                                {"label": country, "value": country}
-                                for country in sorted(
-                                    set(movie["country"] for movie in movies_json_q4)
-                                )
-                            ],
-                            value="All",
-                            clearable=False,
-                            style={"width": "100%"},
+                        id="country-dropdown",
+                        options=country_options,
+                        value="All",
+                        clearable=False,
+                        style={"width": "100%"},
                         ),
                     ],
-                    style={"flex": "1", "margin-left": "10px"},
+                    style={"flex": "1"},
                 ),
-            ],
-            style={
-                "display": "flex",
-                "width": "100%",
-                "justify-content": "space-between",
-            },
-        ),
-        html.Br(),
-        # Wrap slider in a container div
-        html.Div(
-            id="slider-container",
-            children=[
-                dcc.Slider(
-                    id="top-n-slider",
-                    min=1,
-                    max=theSliderMax,
-                    step=1,
-                    value=10,
-                    marks={
-                        i: str(i)
-                        for i in range(
-                            theSliderMin,
-                            theSliderMax,
-                            max(1, math.floor((theSliderMax - theSliderMin) // 10)),
-                        )
-                    },
-                    tooltip={"placement": "bottom", "always_visible": True},
-                )
-            ],
-        ),
-        html.Br(),
-        dcc.Graph(id="profitability-graph"),
-    ]
-)
+        ], style={'width': '20%', 'display': 'inline-block', 'padding': '20px', 'verticalAlign': 'top'}),
+    ], style={'borderRadius': '10px', 'padding': '10px', 'margin': '10px 0', 'verticalAlign': 'top'})
+
+def create_q4_content() -> html.Div:
+    return html.Div(
+        [
+            html.H1("Actors Profitability Analysis"),
+            create_q4_control_panel(),
+            dcc.Graph(id="profitability-graph"),
+        ]
+    )
 
 
 # Function to generate a simplified 2x2 view for Q1-Q4 placeholders
-def createOverview():
+def create_overview() -> html.Div:
     return html.Div([
         dbc.Row([
-            dbc.Col(createQ1Content(), width=6),
-            dbc.Col(createQ2Content(), width=6),
+            dbc.Col(create_q1_content(), width=6),
+            dbc.Col(create_q2_content(), width=6),
         ]),
         dbc.Row([
             dbc.Col(html.Div([
                 html.H3("Top Directors by Profitability (Bubble Chart)"),
-                dcc.Graph(figure=createDirectorsProfitabilityBubble(topN=5))
+                dcc.Graph(figure=create_directors_profitability_bubble(top_n=5))
             ]), width=6),
-            dbc.Col(createQ4Content(), width=6),
+            dbc.Col(create_q4_content(), width=6),
         ]),
     ])
 
@@ -1224,17 +1226,17 @@ def createOverview():
         Output("popover-header", "style"),
     ],
     [
-        Input('force-directed-graph', 'clickData'),
+        Input('force-directed-graph', 'click_data'),
         Input('num-movies-slider-q1', 'value')
     ]
 )
 
 
-def updateGraphAndPopover(clickData: Dict, slider_value: int) -> Tuple[Dict, bool, str, str, Dict]:
+def update_graph_and_popover(click_data: Dict, slider_value: int) -> Tuple[Dict, bool, str, str, Dict]:
     """
     Updates the graph and popover based on the click event data.
 
-    :param clickData: The data from the click event on the graph. This should contain information 
+    :param click_data: The data from the click event on the graph. This should contain information 
                       such as the node clicked and its associated tooltip.
     :return: A tuple containing:
              - The graph data (edges and nodes).
@@ -1248,7 +1250,7 @@ def updateGraphAndPopover(clickData: Dict, slider_value: int) -> Tuple[Dict, boo
     top_movies = sorted(movies_list_q1, key=lambda x: x['grossing'], reverse=True)[:slider_value]
     
     # Generate the force-directed graph with the filtered movies list
-    edgeTrace, nodeTrace, G = generateForceDirectedGraph(top_movies)
+    edge_trace, node_trace, G = generate_force_directed_graph(top_movies)
 
     # Default popover state
     is_open = False
@@ -1256,40 +1258,40 @@ def updateGraphAndPopover(clickData: Dict, slider_value: int) -> Tuple[Dict, boo
     body = "Try again later"
     header_style = {'color': 'white', 'backgroundColor': 'red', 'padding': '5px'}
 
-    if clickData:
-        # Assert clickData structure is as expected
-        assert isinstance(clickData, dict), "clickData should be a dictionary."
-        assert 'points' in clickData, "clickData must contain 'points'."
-        assert len(clickData['points']) > 0, "clickData['points'] cannot be empty."
+    if click_data:
+        # Assert click_data structure is as expected
+        assert isinstance(click_data, dict), "click_data should be a dictionary."
+        assert 'points' in click_data, "click_data must contain 'points'."
+        assert len(click_data['points']) > 0, "click_data['points'] cannot be empty."
 
         is_open = True
-        nodeTooltip = clickData['points'][0].get('text', None)
-        if nodeTooltip:
+        node_tooltip = click_data['points'][0].get('text', None)
+        if node_tooltip:
             # Regular expression to capture name, type, and IMDb URL
             pattern = r"(?P<name>.*?)\s\((?P<type>.*?)\)<br><a href='(?P<url>.*?)'>IMDb page</a>"
-            match = re.search(pattern, nodeTooltip)
+            match = re.search(pattern, node_tooltip)
 
             if match:
-                nodeName = match.group("name")
-                nodeType = match.group("type")
-                nodeURL = match.group("url")
-                moviesCount = G.nodes[nodeURL]['moviesCount']
+                node_name = match.group("name")
+                node_type = match.group("type")
+                node_url = match.group("url")
+                movies_count = G.nodes[node_url]['movies_count']
             else:
-                nodeName = "Name not found"
-                nodeType = "Profession not found"
-                nodeURL = "IMDb URL not found"
-                moviesCount = 0
+                node_name = "Name not found"
+                node_type = "Profession not found"
+                node_url = "IMDb URL not found"
+                movies_count = 0
 
             # Set popover content
-            header = f"{nodeName} ({nodeType})"
-            header_style = {'color': 'white', 'backgroundColor': 'blue', 'padding': '5px'} if nodeType == "director" else {'color': 'black', 'backgroundColor': 'orange', 'padding': '5px'}
+            header = f"{node_name} ({node_type})"
+            header_style = {'color': 'white', 'backgroundColor': 'blue', 'padding': '5px'} if node_type == "director" else {'color': 'black', 'backgroundColor': 'orange', 'padding': '5px'}
             body = dcc.Markdown(f'''
-                Number of movies: {moviesCount}
-                [IMDb page]({nodeURL})
+                Number of movies: {movies_count}
+                [IMDb page]({node_url})
             ''', link_target="_blank",)
 
     return {
-        'data': [edgeTrace, nodeTrace],
+        'data': [edge_trace, node_trace],
         'layout': go.Layout(
             title="Director-Actor Connections",
             hovermode="closest",
@@ -1520,9 +1522,9 @@ def update_graphs(awards_range, metric):
     Output('directors-profitability-graph', 'figure'),
     [Input('q3-top-n-slider', 'value')]
 )
-def updateQ3Graph(topN: int) -> go.Figure:
+def update_q3_graph(top_n: int) -> go.Figure:
     try:
-        return createDirectorsProfitabilityBubble(topN)
+        return create_directors_profitability_bubble(top_n)
     except Exception as e:
         print(f"Error in updateQ3Graph: {e}")
         return go.Figure()
@@ -1533,24 +1535,24 @@ def updateQ3Graph(topN: int) -> go.Figure:
     [Input('q3-top-n-slider', 'value'),
      Input('award-type-dropdown', 'value')]
 )
-def updateAwardsGraph(topN, award_filter):
-    return createTopAwardedDirectorsTreemap(topN, award_filter)
+def update_awards_graph(top_n, award_filter):
+    return create_top_awarded_directors_treemap(top_n, award_filter)
 
 
 @app.callback(
     Output("roles-stacked-bar", "figure"),
     [Input("award-category-dropdown", "value")]
 )
-def updateRolesGraph(selected_award):
-    return createRolesByAwardCategory(selected_award or "Best Director of the Year")
+def update_roles_graph(selected_award: str) -> go.Figure:
+    return create_roles_by_award_category(selected_award or "Best Director of the Year")
 
 
 @app.callback(
     Output('ratings-vs-metascore', 'figure'),
     [Input('q3-top-n-slider', 'value')]
 )
-def updateScatterGraph(_):
-    return createRatingVsMetascoreScatter()
+def update_scatter_graph(_) -> go.Figure:
+    return create_rating_vs_metascore_scatter()
 ##############################################################
 ################## End of Callbacks for Q3 ###################
 ##############################################################
@@ -1565,21 +1567,21 @@ def updateScatterGraph(_):
     Input("top-n-slider", "value"),
     Input("country-dropdown", "value"),
 )
-def update_q4_graph(viz_type, topN, selected_country):
+def update_q4_graph(viz_type: str, top_n: int, selected_country: str) -> go.Figure:
     if viz_type == "top":
-        return plot_top_actors_profitability(topN, selected_country)
+        return plot_top_actors_profitability(top_n, selected_country)
     elif viz_type == "bottom":
-        return plot_bottom_actors_profitability(topN, selected_country)
+        return plot_bottom_actors_profitability(top_n, selected_country)
     elif viz_type == "hist":
         return plot_profitability_distribution(selected_country)
     return go.Figure()
 
 
 @app.callback(Output("slider-container", "style"), Input("viz-type", "value"))
-def toggle_q4_slider_visibility(viz_type):
+def toggle_q4_slider_visibility(viz_type: str) -> Dict:
     if viz_type == "hist":  # Hide the slider for histogram
         return {"display": "none"}
-    return {"display": "block"}
+    return {"display": "inline-block"}
 
 ##############################################################
 ################## End of Callbacks for Q4 ###################
@@ -1598,23 +1600,23 @@ def toggle_q4_slider_visibility(viz_type):
      Input("btn-q3", "n_clicks"),
      Input("btn-q4", "n_clicks")]
 )
-def updateContent(overview_clicks, q1_clicks, q2_clicks, q3_clicks, q4_clicks):
+def update_content(overview_clicks: int, q1_clicks: int, q2_clicks: int, q3_clicks: int, q4_clicks: int) -> html.Div:
     ctx = dash.callback_context
     if not ctx.triggered:
-        return createOverview()
+        return create_overview()
 
-    buttonID = ctx.triggered_id
+    button_id = ctx.triggered_id
 
-    if buttonID == "btn-overview":
-        return createOverview()
-    elif buttonID == "btn-q1":
-        return createQ1Content()
-    elif buttonID == "btn-q2":
-        return createQ2Content()
-    elif buttonID == "btn-q3":
-        return createQ3Content()
-    elif buttonID == "btn-q4":
-        return createQ4Content()
+    if button_id == "btn-overview":
+        return create_overview()
+    elif button_id == "btn-q1":
+        return create_q1_content()
+    elif button_id == "btn-q2":
+        return create_q2_content()
+    elif button_id == "btn-q3":
+        return create_q3_content()
+    elif button_id == "btn-q4":
+        return create_q4_content()
 
 
 # Callback to highlight the active button
@@ -1630,26 +1632,26 @@ def updateContent(overview_clicks, q1_clicks, q2_clicks, q3_clicks, q4_clicks):
      Input("btn-q3", "n_clicks"),
      Input("btn-q4", "n_clicks")]
 )
-def highlightButton(overview_clicks, q1_clicks, q2_clicks, q3_clicks, q4_clicks):
+def highlightButton(overview_clicks: int, q1_clicks: int, q2_clicks: int, q3_clicks: int, q4_clicks: int) -> List[Dict]:
     ctx = dash.callback_context
-    buttonID = ctx.triggered_id if ctx.triggered else None
+    button_id = ctx.triggered_id if ctx.triggered else None
 
-    baseStyle = {'width': '10vw'}
-    defaultStyle = {**baseStyle, 'background-color': 'white', 'color': 'black'}
-    highlightedStyle = {**baseStyle, 'background-color': 'blue', 'color': 'white'}
+    base_style = {'width': '10vw'}
+    default_style = {**base_style, 'background-color': 'white', 'color': 'black'}
+    highlighted_style = {**base_style, 'background-color': 'blue', 'color': 'white'}
 
-    if buttonID == "btn-overview":
-        return highlightedStyle, defaultStyle, defaultStyle, defaultStyle, defaultStyle
-    elif buttonID == "btn-q1":
-        return defaultStyle, highlightedStyle, defaultStyle, defaultStyle, defaultStyle
-    elif buttonID == "btn-q2":
-        return defaultStyle, defaultStyle, highlightedStyle, defaultStyle, defaultStyle
-    elif buttonID == "btn-q3":
-        return defaultStyle, defaultStyle, defaultStyle, highlightedStyle, defaultStyle
-    elif buttonID == "btn-q4":
-        return defaultStyle, defaultStyle, defaultStyle, defaultStyle, highlightedStyle
+    if button_id == "btn-overview":
+        return highlighted_style, default_style, default_style, default_style, default_style
+    elif button_id == "btn-q1":
+        return default_style, highlighted_style, default_style, default_style, default_style
+    elif button_id == "btn-q2":
+        return default_style, default_style, highlighted_style, default_style, default_style
+    elif button_id == "btn-q3":
+        return default_style, default_style, default_style, highlighted_style, default_style
+    elif button_id == "btn-q4":
+        return default_style, default_style, default_style, default_style, highlighted_style
 
-    return highlightedStyle, defaultStyle, defaultStyle, defaultStyle, defaultStyle
+    return highlighted_style, default_style, default_style, default_style, default_style
 
 ##############################################################
 ################### End of App Callbacks #####################
