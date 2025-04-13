@@ -92,11 +92,20 @@ def load_movies_from_df_q1(movies_df: pd.DataFrame) -> Tuple[List[Dict], Dict[st
     :return: A tuple (movies_list, directors_thespians_url_to_name_dict)
     """
 
-    validate_movie_data(movies_df)
+    df = movies_df.copy()
+    validate_movie_data(df)
+    # Clean monetary values
+    for col in ['budget', 'domesticGross', 'worldwideGross']:
+        df[col] = df[col].str.replace('$', '').str.replace(',', '', regex=False)
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    # not all movies have values on grossing and the question aims at movies above a certain box office performance
+    df = df.dropna(subset=['worldwideGross'])
+
     movies_list = []
     directors_thespians_url_to_name_dict = {}
 
-    for _, row in movies_df.iterrows():
+    for _, row in df.iterrows():
         # Safely parse the string to a list of dictionaries
         directors = ast.literal_eval(row['directors']) if isinstance(row['directors'], str) else row['directors']
         thespians = ast.literal_eval(row['thespians']) if isinstance(row['thespians'], str) else row['thespians']
@@ -130,6 +139,7 @@ def process_movie_data_q2(movies_df: pd.DataFrame) -> pd.DataFrame:
     """
 
     df = movies_df.copy()
+    validate_movie_data(df)
     # Clean monetary values
     for col in ['budget', 'domesticGross', 'worldwideGross']:
         df[col] = df[col].str.replace('$', '').str.replace(',', '', regex=False)
@@ -193,6 +203,7 @@ def process_movie_data_q4(movies_df: pd.DataFrame) -> List[Dict]:
     """
 
     data = movies_df.copy()
+    validate_movie_data(data)
     data["title"] = data["title"].apply(lambda x: re.sub(r"^\d+\.\s*", "", x))
     data["budget"] = (
         data["budget"].str.replace(",", "").str.replace("$", "").astype(float)
@@ -248,7 +259,7 @@ movies_json_q4 = process_movie_data_q4(movies_df)
 ##############################################################
 
 # Generate Force Directed Graph
-def generateForceDirectedGraph() -> Tuple[go.Scatter, go.Scatter, nx.Graph]:
+def generateForceDirectedGraph(top_movies: List[Dict]) -> Tuple[go.Scatter, go.Scatter, nx.Graph]:
     """
     Generates a force-directed graph of directors and actors based on movie data.
 
@@ -258,8 +269,8 @@ def generateForceDirectedGraph() -> Tuple[go.Scatter, go.Scatter, nx.Graph]:
     """
 
     G = nx.Graph()
-
-    for movie in movies_list_q1:
+    
+    for movie in top_movies:
         # Iterate over each director in the movie
         for director in movie['directors']:
             directorURL = director['url']
@@ -323,6 +334,9 @@ def generateForceDirectedGraph() -> Tuple[go.Scatter, go.Scatter, nx.Graph]:
             color=nodeColor
         )
     )
+    
+    print(f"edge trace: {edgeTrace}")
+    print(f"node trace: {nodeTrace}")
     return edgeTrace, nodeTrace, G
 
 ##############################################################
@@ -910,23 +924,48 @@ app.layout = html.Div(
 def createQ1Content():
     forceGraphID = "force-directed-graph"
     forceGraphTitle = "Director-Actor Connections"
+    max_value = len(movies_list_q1)
 
     return html.Div([
-        html.H1(forceGraphTitle),
-        dcc.Graph(
-            id=forceGraphID,
-            figure={
-                'data': [],
-                'layout': go.Layout(
-                    title=forceGraphTitle,
-                    hovermode="closest",
-                    showlegend=False,
-                    xaxis=dict(showgrid=False, zeroline=False),
-                    yaxis=dict(showgrid=False, zeroline=False),
-                    margin=dict(l=0, r=0, b=0, t=0)
-                )
-            },
-            style={"width": "100%", "height": "600px"}
+        html.H1(forceGraphTitle, className="graph-title"),
+
+        # Slider with controlled margin and flex layout
+        html.Div([
+            dcc.Slider(
+                id='num-movies-slider-q1',
+                min=1,
+                max=max_value,
+                step=1,
+                value=50,  # Default to Top 50 movies
+                marks={i: str(i) for i in range(1, max_value+1, max(1, math.floor((max_value - 1) / 10)))},
+                tooltip={"placement": "bottom", "always_visible": True},
+                className="slider-style"  # Apply className for styling
+            ),
+        ], className="slider-container"),  # Container for slider, using className
+
+        # Loading component for the graph
+        dcc.Loading(
+            id="loading-graph",
+            type="circle",  # Spinner type
+            children=[
+                dcc.Graph(
+                    id=forceGraphID,
+                    figure={
+                        'data': [],
+                        'layout': go.Layout(
+                            title=forceGraphTitle,
+                            hovermode="closest",
+                            showlegend=False,
+                            xaxis=dict(showgrid=False, zeroline=False),
+                            yaxis=dict(showgrid=False, zeroline=False),
+                            margin=dict(l=0, r=0, b=0, t=0)
+                        )
+                    },
+                    className="graph-container",
+                    style={"width": "100%", "height": "700px", "padding-top": "0px"} 
+                ),
+            ],
+            className="loading-container"  # Apply loading container class
         ),
 
         # Popover for node click
@@ -940,8 +979,8 @@ def createQ1Content():
             target=forceGraphID,
             placement="top-start",
         ),
-    ])
-
+    ], className="main-container")
+    
 def createQ2ControlPanel():
     return html.Div([
         html.Div([
@@ -1185,12 +1224,13 @@ def createOverview():
         Output("popover-header", "style"),
     ],
     [
-        Input('force-directed-graph', 'clickData')
+        Input('force-directed-graph', 'clickData'),
+        Input('num-movies-slider-q1', 'value')
     ]
 )
 
 
-def updateGraphAndPopover(clickData: Dict) -> Tuple[Dict, bool, str, str, Dict]:
+def updateGraphAndPopover(clickData: Dict, slider_value: int) -> Tuple[Dict, bool, str, str, Dict]:
     """
     Updates the graph and popover based on the click event data.
 
@@ -1204,7 +1244,11 @@ def updateGraphAndPopover(clickData: Dict) -> Tuple[Dict, bool, str, str, Dict]:
              - The header style for the popover.
     """
 
-    edgeTrace, nodeTrace, G = generateForceDirectedGraph()
+    # Filter movies_list_q1 based on the slider value (number of top movies to show)
+    top_movies = sorted(movies_list_q1, key=lambda x: x['grossing'], reverse=True)[:slider_value]
+    
+    # Generate the force-directed graph with the filtered movies list
+    edgeTrace, nodeTrace, G = generateForceDirectedGraph(top_movies)
 
     # Default popover state
     is_open = False
